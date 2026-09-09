@@ -3,7 +3,8 @@ const express = require('express');
 const cors = require('cors');
 const packageRoutes = require('./routes/packages');
 const { getAccessToken } = require('./services/paymentService');
-const { initiateStkPush } = require('./services/paymentService');
+const { initiateStkPush, pendingTransactions } = require('./services/paymentService');
+const mpesaRoutes = require('./routes/mpesa')
 
 const app = express();
 const PORT = process.env.PORT;
@@ -30,7 +31,13 @@ app.post('/test-stk', async (req,res) => {
   }
 });
 
+
+app.get('/test-all', (req, res) => {
+  res.json([...pendingTransactions.entries()]);
+});
+
 app.use('/api/packages', packageRoutes);
+app.use('/api/mpesa', mpesaRoutes)
 
 app.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`);

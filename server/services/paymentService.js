@@ -69,8 +69,8 @@ async function initiateStkPush(phone, packageId) {
 
     const data = await response.json();
 
-    if (data.CheckoutRequestId) {
-        pendingTransactions.set(data.CheckoutRequestId, {
+    if (data.CheckoutRequestID) {
+        pendingTransactions.set(data.CheckoutRequestID, {
             phone,
             packageId,
             status: 'pending',
