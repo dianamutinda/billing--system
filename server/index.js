@@ -4,6 +4,10 @@ const cors = require('cors');
 const packageRoutes = require('./routes/packages');
 const { getAccessToken } = require('./services/paymentService');
 const { initiateStkPush, pendingTransactions } = require('./services/paymentService');
+const { sessions, createSession } = require('./services/sessionService');
+const { getPackageById } = require('./services/packageService');
+const { activate } = require('./services/networkService');
+
 const mpesaRoutes = require('./routes/mpesa')
 
 const app = express();
@@ -29,6 +33,14 @@ app.post('/test-stk', async (req,res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+app.get('/test-force-session', async (req, res) => {
+  const pkg = getPackageById('1hr');
+  const fakeTransaction = { phone: '254708374149', packageId: '1hr' };
+  const session = createSession(fakeTransaction, pkg);
+  await activate(session);
+  res.json(session);
 });
 
 
