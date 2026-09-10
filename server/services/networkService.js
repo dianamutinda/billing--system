@@ -8,4 +8,12 @@ async function activate(session) {
     };
 
 }
-module.exports = { activate };
+
+async function revoke(session) {
+    console.log(`[MOCK] Revoking access for ${session.phoneNumber} (session ${session.id})`);
+    
+    return {
+        success: true
+    };
+}
+module.exports = { activate, revoke };

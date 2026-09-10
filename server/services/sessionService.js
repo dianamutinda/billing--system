@@ -1,3 +1,4 @@
+const {revoke} = require('./networkService')
 const crypto = require('crypto');
 
 const sessions = new Map();
@@ -21,4 +22,18 @@ function createSession(transaction, pkg) {
     sessions.set(id, session);
     return session;
 }
-module.exports = { createSession, sessions};
+
+async function expireOldSessions() {
+    const now = new Date();
+
+    for (const [id, session] of sessions) {
+        if (session.status === 'active' && new Date(session.expiresAt) < now) {
+            await revoke(session);
+            session.status = 'expired';
+            sessions.set(id, session);
+            console.log(`session ${id} expired for ${session.phoneNumber}`);
+            
+        }
+    }
+}
+module.exports = { createSession, sessions, expireOldSessions};

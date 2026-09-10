@@ -6,7 +6,8 @@ const { getAccessToken } = require('./services/paymentService');
 const { initiateStkPush, pendingTransactions } = require('./services/paymentService');
 const { sessions, createSession } = require('./services/sessionService');
 const { getPackageById } = require('./services/packageService');
-const { activate } = require('./services/networkService');
+const { activate, revoke } = require('./services/networkService');
+const {expireOldSessions} = require('./services/sessionService')
 
 const mpesaRoutes = require('./routes/mpesa')
 
@@ -43,6 +44,18 @@ app.get('/test-force-session', async (req, res) => {
   res.json(session);
 });
 
+app.get('/test-quick-session', async (req, res) => {
+  const pkg = getPackageById('1hr');
+  const fakeTransaction = { phone: '254708374149', packageId: '1hr' };
+  const session = createSession(fakeTransaction, pkg);
+
+  // Override expiresAt to 10 seconds from now, just for this test
+  session.expiresAt = new Date(Date.now() + 10 * 1000).toISOString();
+  sessions.set(session.id, session);
+
+  res.json(session);
+});
+
 
 app.get('/test-all', (req, res) => {
   res.json([...pendingTransactions.entries()]);
@@ -50,6 +63,8 @@ app.get('/test-all', (req, res) => {
 
 app.use('/api/packages', packageRoutes);
 app.use('/api/mpesa', mpesaRoutes)
+
+setInterval(expireOldSessions, 60 * 1000);
 
 app.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`);
