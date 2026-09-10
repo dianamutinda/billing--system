@@ -35,7 +35,7 @@ async function getAccessToken() {
 }
 
 async function initiateStkPush(phone, packageId) {
-    const pkg = getPackageById(packageId);
+    const pkg = await getPackageById(packageId);
     if (!pkg) throw new Error('Invalid package');
 
     const token = await getAccessToken();
@@ -43,6 +43,7 @@ async function initiateStkPush(phone, packageId) {
     const password = Buffer.from(
         `${process.env.DARAJA_SHORTCODE}${process.env.DARAJA_PASSKEY}${timestamp}`
     ).toString('base64');
+
 
     const response = await fetch(
         'https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest',
@@ -72,11 +73,13 @@ async function initiateStkPush(phone, packageId) {
 
     if (data.CheckoutRequestID) {
         await pool.query(
-            `INSERT INTO transactions (checkout_request_id, phone, package_is, status)
+            `INSERT INTO transactions (checkout_request_id, phone, package_id, status)
              VALUES ($1, $2, $3, 'pending')`,
              [data.CheckoutRequestID, phone, packageId]
         );
     }
+    console.log('Package being charged:', pkg);
+console.log('Amount being sent:', pkg.amount);
     return data;
 }
 

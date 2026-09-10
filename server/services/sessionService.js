@@ -1,39 +1,32 @@
-const {revoke} = require('./networkService')
-const crypto = require('crypto');
+const pool = require('../db');
+const {revoke} = require('./networkService');
 
-const sessions = new Map();
 
-function createSession(transaction, pkg) {
-    const id = crypto.randomUUID();
-    const startedAt = new Date();
-    const expiresAt = new Date(startedAt.getTime() + pkg.durationMinutes * 60 * 1000);
+async function createSession(transaction, pkg) {
+    const expiresAt = new Date(Date.now + pkg.duration_minutes * 60 * 1000);
 
-    const session = {
-        id,
-        phoneNumber: transaction.phone,
-        packageId: pkg.id,
-        packageName: pkg.label,
-        startedAt: startedAt.toISOString(),
-        expiresAt: expiresAt.toISOString(),
-        status: 'active',
-        routerDeviceId: null,
-    };
+    const result = await pool.query(
+        `INSERT INTO sessions (phone_number, package_id, package_name, expires_at)
+         VALUES ($1, $2, $3, $4) RETURNING *`,
+        [transaction.phone, pkg.id, pkg.label, expiresAt]
+    )
+    return result.rows[0];
+}
 
-    sessions.set(id, session);
-    return session;
+async function getAllSessions() {
+    const result = await pool.query('SELECT * FROM sessions ORDER BY started_at DESC')
+    return result.rows;
 }
 
 async function expireOldSessions() {
-    const now = new Date();
+    const result = await pool.query(
+        `SELECT * FROM sessions WHERE status = 'active' AND expires_at < now()`
+    );
 
-    for (const [id, session] of sessions) {
-        if (session.status === 'active' && new Date(session.expiresAt) < now) {
+    for (const session of result.rows) {
             await revoke(session);
-            session.status = 'expired';
-            sessions.set(id, session);
-            console.log(`session ${id} expired for ${session.phoneNumber}`);
-            
-        }
+            await pool.query(`UPDATE sessions SET status = 'expired' WHERE id = $1`, [session.id]);
+            console.log(`session ${session.id} expired for ${session.phone_number}`);
     }
 }
-module.exports = { createSession, sessions, expireOldSessions};
+module.exports = { createSession, getAllSessions, expireOldSessions};

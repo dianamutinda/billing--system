@@ -1,19 +1,16 @@
 require('dotenv').config();
 
-console.log('DB URL loaded:', process.env.DATABASE_URL ? 'yes' : 'NO - MISSING');
-
 const express = require('express');
 const cors = require('cors');
-const packageRoutes = require('./routes/packages');
-const { getAccessToken } = require('./services/paymentService');
-const { initiateStkPush, pendingTransactions } = require('./services/paymentService');
-const { sessions, createSession } = require('./services/sessionService');
-const { getPackageById } = require('./services/packageService');
-const { activate, revoke } = require('./services/networkService');
-const {expireOldSessions} = require('./services/sessionService')
-const pool = require('./db')
+const pool = require('./db');
 
-const mpesaRoutes = require('./routes/mpesa')
+const packageRoutes = require('./routes/packages');
+const mpesaRoutes = require('./routes/mpesa');
+
+const { getAccessToken, initiateStkPush } = require('./services/paymentService');
+const { getPackageById } = require('./services/packageService');
+const { createSession, getAllSessions, expireOldSessions } = require('./services/sessionService');
+const { activate } = require('./services/networkService');
 
 const app = express();
 const PORT = process.env.PORT;
@@ -30,9 +27,9 @@ app.get('/test-token', async (req, res) => {
   res.json({ token });
 });
 
-app.post('/test-stk', async (req,res) => {
+app.post('/test-stk', async (req, res) => {
   try {
-    const {phone, packageId} = req.body;
+    const { phone, packageId } = req.body;
     const result = await initiateStkPush(phone, packageId);
     res.json(result);
   } catch (err) {
@@ -41,28 +38,24 @@ app.post('/test-stk', async (req,res) => {
 });
 
 app.get('/test-force-session', async (req, res) => {
-  const pkg = getPackageById('1hr');
-  const fakeTransaction = { phone: '254708374149', packageId: '1hr' };
-  const session = createSession(fakeTransaction, pkg);
-  await activate(session);
-  res.json(session);
+  try {
+    const pkg = await getPackageById('1hr');
+    const fakeTransaction = { phone: '254708374149' };
+    const session = await createSession(fakeTransaction, pkg);
+    await activate(session);
+    res.json(session);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-app.get('/test-quick-session', async (req, res) => {
-  const pkg = getPackageById('1hr');
-  const fakeTransaction = { phone: '254708374149', packageId: '1hr' };
-  const session = createSession(fakeTransaction, pkg);
-
-  // Override expiresAt to 10 seconds from now, just for this test
-  session.expiresAt = new Date(Date.now() + 10 * 1000).toISOString();
-  sessions.set(session.id, session);
-
-  res.json(session);
-});
-
-
-app.get('/test-all', (req, res) => {
-  res.json([...pendingTransactions.entries()]);
+app.get('/test-sessions', async (req, res) => {
+  try {
+    const sessions = await getAllSessions();
+    res.json(sessions);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.get('/test-db', async (req, res) => {
@@ -75,7 +68,7 @@ app.get('/test-db', async (req, res) => {
 });
 
 app.use('/api/packages', packageRoutes);
-app.use('/api/mpesa', mpesaRoutes)
+app.use('/api/mpesa', mpesaRoutes);
 
 setInterval(expireOldSessions, 60 * 1000);
 
