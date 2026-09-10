@@ -1,6 +1,7 @@
+const pool = require('../db')
+
 const { getPackageById } = require('./packageService')
 
-const pendingTransactions = new Map();
 
 function getTimestamp() {
     const now = new Date();
@@ -70,14 +71,35 @@ async function initiateStkPush(phone, packageId) {
     const data = await response.json();
 
     if (data.CheckoutRequestID) {
-        pendingTransactions.set(data.CheckoutRequestID, {
-            phone,
-            packageId,
-            status: 'pending',
-        });
+        await pool.query(
+            `INSERT INTO transactions (checkout_request_id, phone, package_is, status)
+             VALUES ($1, $2, $3, 'pending')`,
+             [data.CheckoutRequestID, phone, packageId]
+        );
     }
     return data;
 }
 
+async function getTransaction(checkoutRequestId) {
+    const result = await pool.query(
+        'SELECT * FROM transactions WHERE checkout_request_id = $1',
+        [checkoutRequestId]
+    );
+    return result.rows[0];
+}
 
-module.exports = { getAccessToken, initiateStkPush, pendingTransactions};
+async function updateTransactionStatus(checkoutRequestId, status, resultDesc) {
+    const result = await pool.query(
+        `UPDATE transactions SET status = $1, result_desc = $2
+        WHERE checkout_request_id = $3 RETURNING *`,
+        [status, resultDesc, checkoutRequestId]
+    );
+    return result.rows[0];
+}
+
+
+module.exports = { 
+    getAccessToken, 
+    initiateStkPush, 
+    getTransaction, 
+    updateTransactionStatus};
