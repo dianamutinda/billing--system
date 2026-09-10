@@ -1,15 +1,13 @@
-const packages = [
-  { id: '1hr', label: '1 Hour', amount: 10, durationMinutes: 60 },
-  { id: '1day', label: '1 Day', amount: 50, durationMinutes: 1440 },
-  { id: '1week', label: '1 Week', amount: 200, durationMinutes: 10080 },
-];
+const pool = require('../db')
 
-function getAllPackages() {
-  return packages;
+async function getAllPackages() {
+  const result = await pool.query('SELECT * FROM packages');
+  return result.rows;
 }
 
-function getPackageById(id) {
-  return packages.find((pkg) => pkg.id === id);
+async function getPackageById(id) {
+  const result = await pool.query('SELECT * FROM packages WHERE id = $1', [id]);
+  return result.rows[0];
 }
 
 module.exports = { getAllPackages, getPackageById };
