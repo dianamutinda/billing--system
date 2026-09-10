@@ -1,4 +1,7 @@
 require('dotenv').config();
+
+console.log('DB URL loaded:', process.env.DATABASE_URL ? 'yes' : 'NO - MISSING');
+
 const express = require('express');
 const cors = require('cors');
 const packageRoutes = require('./routes/packages');
@@ -8,6 +11,7 @@ const { sessions, createSession } = require('./services/sessionService');
 const { getPackageById } = require('./services/packageService');
 const { activate, revoke } = require('./services/networkService');
 const {expireOldSessions} = require('./services/sessionService')
+const pool = require('./db')
 
 const mpesaRoutes = require('./routes/mpesa')
 
@@ -59,6 +63,15 @@ app.get('/test-quick-session', async (req, res) => {
 
 app.get('/test-all', (req, res) => {
   res.json([...pendingTransactions.entries()]);
+});
+
+app.get('/test-db', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM packages');
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.use('/api/packages', packageRoutes);
