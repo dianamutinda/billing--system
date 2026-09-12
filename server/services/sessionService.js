@@ -3,7 +3,7 @@ const {revoke} = require('./networkService');
 
 
 async function createSession(transaction, pkg) {
-    const expiresAt = new Date(Date.now + pkg.duration_minutes * 60 * 1000);
+    const expiresAt = new Date(Date.now() + pkg.duration_minutes * 60 * 1000);
 
     const result = await pool.query(
         `INSERT INTO sessions (phone_number, package_id, package_name, expires_at)
