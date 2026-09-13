@@ -7,6 +7,7 @@ const pool = require('./db');
 const packageRoutes = require('./routes/packages');
 const mpesaRoutes = require('./routes/mpesa');
 const purchaseRoutes = require('./routes/purchase');
+const sessionsRoutes = require('./routes/sessions');
 
 const { getAllSessions, expireOldSessions } = require('./services/sessionService');
 
@@ -45,6 +46,7 @@ app.get('/test-sessions', async (req, res) => {
 app.use('/api/packages', packageRoutes);
 app.use('/api/mpesa', mpesaRoutes);
 app.use('/api/purchase', purchaseRoutes);
+app.use('/api/sessions', sessionsRoutes);
 
 setInterval(expireOldSessions, 60 * 1000);
 

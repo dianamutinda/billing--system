@@ -100,9 +100,19 @@ async function updateTransactionStatus(checkoutRequestId, status, resultDesc) {
     return result.rows[0];
 }
 
+async function getLatestTransactionByPhone(phone) {
+    const result = await pool.query(
+        `SELECT * FROM transactions WHERE phone = $1 ORDER BY created_at DESC LIMIT 1`,
+        [phone]
+    );
+    return result.rows[0];
+}
+
 
 module.exports = { 
     getAccessToken, 
     initiateStkPush, 
     getTransaction, 
-    updateTransactionStatus};
+    updateTransactionStatus,
+    getLatestTransactionByPhone,
+};
