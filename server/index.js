@@ -13,7 +13,15 @@ const { getAllSessions, expireOldSessions } = require('./services/sessionService
 const app = express();
 const PORT = process.env.PORT;
 
-app.use(cors());
+const allowedOrigins = [
+  'http://localhost:5173',
+  process.env.FRONTEND_URL
+].filter(Boolean);
+
+app.use(cors({
+  origin: allowedOrigins
+}));
+
 app.use(express.json());
 
 app.get('/', (req, res) => {
@@ -22,11 +30,15 @@ app.get('/', (req, res) => {
 
 
 app.get('/test-sessions', async (req, res) => {
+  if (req.headers['x-admin-key'] !== process.env.ADMIN_KEY) {
+        return res.status(404).end();
+    }
   try {
     const sessions = await getAllSessions();
     res.json(sessions);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('GET /test-sessions failed:', err);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
   }
 });
 

@@ -18,6 +18,14 @@ async function getAllSessions() {
     return result.rows;
 }
 
+async function getActiveSessionByPhone(phone) {
+    const result = await pool.query(
+        `SELECT * FROM sessions WHERE phone_number = $1 AND status = 'active' AND expires_at > now()`,
+        [phone]
+    );
+    return result.rows[0];
+}
+
 async function expireOldSessions() {
     const result = await pool.query(
         `SELECT * FROM sessions WHERE status = 'active' AND expires_at < now()`
@@ -29,4 +37,4 @@ async function expireOldSessions() {
             console.log(`session ${session.id} expired for ${session.phone_number}`);
     }
 }
-module.exports = { createSession, getAllSessions, expireOldSessions};
+module.exports = { createSession, getAllSessions, expireOldSessions, getActiveSessionByPhone};

@@ -7,7 +7,8 @@ router.get('/', async (req, res) => {
     const packages = await getAllPackages();
     res.json(packages);
   } catch (err) {
-    res.status(500).json({error: err.message});
+    console.error('POST /api/purchase failed:', err);
+    res.status(500).json({error: 'Something went wrong. Please try again.'});
   }
 });
 

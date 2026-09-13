@@ -62,7 +62,7 @@ async function initiateStkPush(phone, packageId) {
                 PartyA: phone,
                 PartyB: process.env.DARAJA_SHORTCODE,
                 PhoneNumber: phone,
-                CallBackURL: process.env.CALLBACK_URL,
+                CallBackURL: `${process.env.NGROK_BASE_URL}/api/mpesa/callback/${process.env.MPESA_CALLBACK_SECRET}`,
                 AccountReference: 'wifi-billing',
                 TransactionDesc: `Payment for ${pkg.label}`
             }),
