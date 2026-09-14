@@ -8,6 +8,7 @@ import { FailedScreen } from './components/FailedScreen';
 export default function App() {
   const [screen, setScreen] = useState('packages');
   const [phone, setPhone] = useState('');
+  const [token, setToken] = useState(null);
   const [packageId, setPackageId] = useState(null);
   const [sessionInfo, setSessionInfo] = useState(null);
 
@@ -16,13 +17,14 @@ export default function App() {
     setScreen('phone');
   };
 
-  const handlePurchaseSuccess = (phoneNumber) => {
+  const handlePurchaseSuccess = (phoneNumber, purchaseToken) => {
     setPhone(phoneNumber);
+    setToken(purchaseToken);
     setScreen('processing');
   };
 
   const handleActive = (expiresAt) => {
-    setSessionInfo({expiresAt});
+    setSessionInfo({ expiresAt });
     setScreen('active');
   };
 
@@ -31,15 +33,17 @@ export default function App() {
   };
 
   const handleRetry = () => {
+    setToken(null);
     setScreen('phone');
   };
 
   const handleBackToPackages = () => {
     setPackageId(null);
+    setToken(null);
     setScreen('packages');
   };
 
-    return (
+  return (
     <div className="min-h-screen bg-slate-50">
       {screen === 'packages' && (
         <PackageList onSelect={handlePackageSelect} />
@@ -52,7 +56,7 @@ export default function App() {
       )}
       {screen === 'processing' && (
         <ProcessingScreen
-          phone={phone}
+          token={token}
           onActive={handleActive}
           onFailed={handleFailed}
         />
@@ -66,4 +70,3 @@ export default function App() {
     </div>
   );
 }
-

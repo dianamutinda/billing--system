@@ -2,11 +2,11 @@ import { useState } from "react";
 import { initiatePurchase } from "../api/purchase";
 
 export function PhoneForm({ packageId, onSuccess }) {
-    const [phone, setPhone] = useState('');
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState(null);
+  const [phone, setPhone] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
-    const handleSubmit = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
 
@@ -21,15 +21,17 @@ export function PhoneForm({ packageId, onSuccess }) {
     setLoading(false);
 
     if (result.status === 'ok') {
-      onSuccess(fullPhone);
+      onSuccess(fullPhone, result.token);
     } else if (result.status === 'already_active') {
       setError('You already have an active session on this number.');
+    } else if (result.message === 'network_failure') {
+      setError('Could not reach the server. Check your connection and try again.');
     } else {
       setError('Something went wrong. Please try again.');
     }
   };
 
-    return (
+  return (
     <div className="max-w-md mx-auto p-4">
       <h1 className="text-2xl font-bold text-slate-900 text-center mt-6">
         Enter Your Phone Number

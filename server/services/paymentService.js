@@ -34,53 +34,59 @@ async function getAccessToken() {
     return data.access_token;
 }
 
-async function initiateStkPush(phone, packageId) {
-    const pkg = await getPackageById(packageId);
-    if (!pkg) throw new Error('Invalid package');
+async function initiateStkPush(phone, packageId, token) {
+  const pkg = await getPackageById(packageId);
+  if (!pkg) throw new Error('Invalid package');
 
-    const token = await getAccessToken();
-    const timestamp = getTimestamp();
-    const password = Buffer.from(
-        `${process.env.DARAJA_SHORTCODE}${process.env.DARAJA_PASSKEY}${timestamp}`
-    ).toString('base64');
+  const accessToken = await getAccessToken();
+  const timestamp = getTimestamp();
+  const password = Buffer.from(
+    `${process.env.DARAJA_SHORTCODE}${process.env.DARAJA_PASSKEY}${timestamp}`
+  ).toString('base64');
 
-
-    const response = await fetch(
-        'https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest',
-        {
-            method: 'POST',
-            headers: {
-                Authorization: `Bearer ${token}`,
-                'Content-Type' : 'application/json',
-            },
-            body: JSON.stringify({
-                BusinessShortCode: process.env.DARAJA_SHORTCODE,
-                Password: password,
-                Timestamp: timestamp,
-                TransactionType: 'CustomerPayBillOnline',
-                Amount: pkg.amount,
-                PartyA: phone,
-                PartyB: process.env.DARAJA_SHORTCODE,
-                PhoneNumber: phone,
-                CallBackURL: `${process.env.NGROK_BASE_URL}/api/mpesa/callback/${process.env.MPESA_CALLBACK_SECRET}`,
-                AccountReference: 'wifi-billing',
-                TransactionDesc: `Payment for ${pkg.label}`
-            }),
-        }
-    );
-
-    const data = await response.json();
-
-    if (data.CheckoutRequestID) {
-        await pool.query(
-            `INSERT INTO transactions (checkout_request_id, phone, package_id, status)
-             VALUES ($1, $2, $3, 'pending')`,
-             [data.CheckoutRequestID, phone, packageId]
-        );
+  const response = await fetch(
+    'https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        BusinessShortCode: process.env.DARAJA_SHORTCODE,
+        Password: password,
+        Timestamp: timestamp,
+        TransactionType: 'CustomerPayBillOnline',
+        Amount: pkg.amount,
+        PartyA: phone,
+        PartyB: process.env.DARAJA_SHORTCODE,
+        PhoneNumber: phone,
+        CallBackURL: `${process.env.NGROK_BASE_URL}/api/mpesa/callback/${process.env.MPESA_CALLBACK_SECRET}`,
+        AccountReference: 'wifi-billing',
+        TransactionDesc: `Payment for ${pkg.label}`,
+      }),
     }
-    console.log('Package being charged:', pkg);
-console.log('Amount being sent:', pkg.amount);
-    return data;
+  );
+
+  const data = await response.json();
+
+  if (data.CheckoutRequestID) {
+    await pool.query(
+      `INSERT INTO transactions (checkout_request_id, phone, package_id, status, token)
+       VALUES ($1, $2, $3, 'pending', $4)`,
+      [data.CheckoutRequestID, phone, packageId, token]
+    );
+  }
+
+  return data;
+}
+
+async function getTransactionByToken(token) {
+  const result = await pool.query(
+    'SELECT * FROM transactions WHERE token = $1',
+    [token]
+  );
+  return result.rows[0];
 }
 
 async function getTransaction(checkoutRequestId) {
@@ -115,4 +121,5 @@ module.exports = {
     getTransaction, 
     updateTransactionStatus,
     getLatestTransactionByPhone,
+    getTransactionByToken,
 };

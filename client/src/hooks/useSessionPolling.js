@@ -1,15 +1,17 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { getSessionStatus } from '../api/purchase';
 
-export function useSessionPolling(phone, active, timeoutMs = 60000) {
+export function useSessionPolling(token, active, timeoutMs = 60000) {
   const [result, setResult] = useState({ status: 'pending' });
+  const [checking, setChecking] = useState(false);
   const intervalRef = useRef(null);
   const timeoutRef = useRef(null);
 
-    useEffect(() => {
-    if (!active || !phone) return;
+  useEffect(() => {
+    if (!active || !token) return;
 
     const poll = async () => {
-      const data = await getSessionStatus(phone);
+      const data = await getSessionStatus(token);
       setResult(data);
 
       if (data.status === 'active' || data.status === 'failed') {
@@ -30,7 +32,15 @@ export function useSessionPolling(phone, active, timeoutMs = 60000) {
       clearInterval(intervalRef.current);
       clearTimeout(timeoutRef.current);
     };
-  }, [active, phone, timeoutMs]);
+  }, [active, token, timeoutMs]);
 
-  return result;
+  const recheck = useCallback(async () => {
+    if (!token || checking) return;
+    setChecking(true);
+    const data = await getSessionStatus(token);
+    setChecking(false);
+    setResult(data);
+  }, [token, checking]);
+
+  return { ...result, checking, recheck };
 }
