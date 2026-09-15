@@ -4,6 +4,7 @@ const router = express.Router();
 const { initiateStkPush } = require('../services/paymentService');
 const { getPackageById } = require('../services/packageService');
 const { getActiveSessionByPhone } = require('../services/sessionService');
+const { ok } = require('assert');
 
 const PHONE_REGEX = /^254\d{9}$/;
 
@@ -30,7 +31,11 @@ router.post('/', async (req, res) => {
 
     const token = crypto.randomUUID();
     const result = await initiateStkPush(phone, packageId, token);
-    res.json({ ...result, token });
+
+    if (!result.CheckoutRequestID) {
+      return res.status(502).json({ error: 'Payment provider did not accept the request. Please try again.' });
+    }
+    res.json({ ok: true, token });
   } catch (err) {
     console.log('POST /api/purchase failed:', err);
     res.status(500).json({ error: 'Something went wrong. Please try again.' });
