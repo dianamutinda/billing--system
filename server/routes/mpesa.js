@@ -24,14 +24,14 @@ router.post('/callback/:secret', async (req, res) => {
                 await updateTransactionStatus(CheckoutRequestID, status, ResultDesc);
 
                 if (paid) {
-                    const pkg = await getPackageById(existing.package_id);
-                    const session = await createSession(existing, pkg);
+                    const pkg = await getPackageById(existing.package_id, existing.tenant_id);
+                    const session = await createSession(existing, pkg, existing.tenant_id);
                     await activate(session);
                     console.log(`Session created for ${session.phone_number}, expires ${session.expires_at}`);
                 }
-            }
         }
         res.json({ ResultCode: 0, ResultDesc: 'Accepted' });
+    }
     } catch (err) {
         console.error('M-Pesa callback processing failed:', err);
         res.json({ ResultCode: 0, ResultDesc: 'Accepted' }); // still ACK to Safaricom

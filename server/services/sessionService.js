@@ -1,13 +1,13 @@
 const pool = require('../db');
 const { revoke } = require('./networkService');
 
-async function createSession(transaction, pkg) {
+async function createSession(transaction, pkg, tenantId) {
   const expiresAt = new Date(Date.now() + pkg.duration_minutes * 60 * 1000);
 
   const result = await pool.query(
-    `INSERT INTO sessions (phone_number, package_id, package_name, expires_at, token)
-     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-    [transaction.phone, pkg.id, pkg.label, expiresAt, transaction.token]
+    `INSERT INTO sessions (phone_number, package_id, package_name, expires_at, token, tenant_id)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+    [transaction.phone, pkg.id, pkg.label, expiresAt, transaction.token, tenantId]
   );
   return result.rows[0];
 }
@@ -17,10 +17,10 @@ async function getAllSessions() {
   return result.rows;
 }
 
-async function getActiveSessionByPhone(phone) {
+async function getActiveSessionByPhone(phone, tenantId) {
   const result = await pool.query(
-    `SELECT * FROM sessions WHERE phone_number = $1 AND status = 'active' AND expires_at > now()`,
-    [phone]
+    `SELECT * FROM sessions WHERE phone_number = $1 AND tenant_id = $2 AND status = 'active' AND expires_at > now()`,
+    [phone, tenantId]
   );
   return result.rows[0];
 }

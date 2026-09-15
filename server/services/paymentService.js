@@ -34,8 +34,8 @@ async function getAccessToken() {
     return data.access_token;
 }
 
-async function initiateStkPush(phone, packageId, token) {
-  const pkg = await getPackageById(packageId);
+async function initiateStkPush(phone, packageId, token, tenantId) {
+  const pkg = await getPackageById(packageId, tenantId);
   if (!pkg) throw new Error('Invalid package');
 
   const accessToken = await getAccessToken();
@@ -70,11 +70,11 @@ async function initiateStkPush(phone, packageId, token) {
 
   const data = await response.json();
 
-  if (data.CheckoutRequestID) {
+   if (data.CheckoutRequestID) {
     await pool.query(
-      `INSERT INTO transactions (checkout_request_id, phone, package_id, status, token)
-       VALUES ($1, $2, $3, 'pending', $4)`,
-      [data.CheckoutRequestID, phone, packageId, token]
+      `INSERT INTO transactions (checkout_request_id, phone, package_id, status, token, tenant_id)
+       VALUES ($1, $2, $3, 'pending', $4, $5)`,
+      [data.CheckoutRequestID, phone, packageId, token, tenantId]
     );
   }
 
