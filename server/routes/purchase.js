@@ -36,7 +36,7 @@ router.post('/:portalSlug', async (req, res) => {
     }
 
     const token = crypto.randomUUID();
-    const result = await initiateStkPush(phone, packageId, token);
+    const result = await initiateStkPush(phone, packageId, token, tenant.id);
 
     if (!result.CheckoutRequestID) {
       return res.status(502).json({ error: 'Payment provider did not accept the request. Please try again.' });

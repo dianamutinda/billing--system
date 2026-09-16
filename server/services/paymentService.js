@@ -1,37 +1,37 @@
-const pool = require('../db')
+const { pool, withTenant } = require('../db')
 
 const { getPackageById } = require('./packageService')
 
 
 function getTimestamp() {
-    const now = new Date();
-    const pad = (n) => String(n).padStart(2, '0');
-    return(
-        now.getFullYear() +
-        pad(now.getMonth() + 1) +
-        pad(now.getDate()) + 
-        pad(now.getHours()) + 
-        pad(now.getMinutes()) +
-        pad(now.getSeconds())
-    );
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return(
+    now.getFullYear() +
+    pad(now.getMonth() + 1) +
+    pad(now.getDate()) + 
+    pad(now.getHours()) + 
+    pad(now.getMinutes()) +
+    pad(now.getSeconds())
+  );
 }
 
 async function getAccessToken() {
-    const auth = Buffer.from(
-        `${process.env.MPESA_CONSUMER_KEY}:${process.env.MPESA_CONSUMER_SECRET}`
-    ).toString('base64')
+  const auth = Buffer.from(
+    `${process.env.MPESA_CONSUMER_KEY}:${process.env.MPESA_CONSUMER_SECRET}`
+  ).toString('base64')
 
-    const response = await fetch(
-        'https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials',
-        {
-            headers: {
-                Authorization: `Basic ${auth}`
-            },
-        }
-    );
+  const response = await fetch(
+    'https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials',
+    {
+      headers: {
+        Authorization: `Basic ${auth}`
+      },
+    }
+  );
 
-    const data = await response.json();
-    return data.access_token;
+  const data = await response.json();
+  return data.access_token;
 }
 
 async function initiateStkPush(phone, packageId, token, tenantId) {
@@ -70,11 +70,13 @@ async function initiateStkPush(phone, packageId, token, tenantId) {
 
   const data = await response.json();
 
-   if (data.CheckoutRequestID) {
-    await pool.query(
-      `INSERT INTO transactions (checkout_request_id, phone, package_id, status, token, tenant_id)
-       VALUES ($1, $2, $3, 'pending', $4, $5)`,
-      [data.CheckoutRequestID, phone, packageId, token, tenantId]
+  if (data.CheckoutRequestID) {
+    await withTenant(tenantId, (client) =>
+      client.query(
+        `INSERT INTO transactions (checkout_request_id, phone, package_id, status, token, tenant_id)
+         VALUES ($1, $2, $3, 'pending', $4, $5)`,
+        [data.CheckoutRequestID, phone, packageId, token, tenantId]
+      )
     );
   }
 
@@ -90,36 +92,39 @@ async function getTransactionByToken(token) {
 }
 
 async function getTransaction(checkoutRequestId) {
-    const result = await pool.query(
-        'SELECT * FROM transactions WHERE checkout_request_id = $1',
-        [checkoutRequestId]
-    );
-    return result.rows[0];
+  const result = await pool.query(
+    'SELECT * FROM transactions WHERE checkout_request_id = $1',
+    [checkoutRequestId]
+  );
+  return result.rows[0];
 }
 
-async function updateTransactionStatus(checkoutRequestId, status, resultDesc) {
-    const result = await pool.query(
-        `UPDATE transactions SET status = $1, result_desc = $2
-        WHERE checkout_request_id = $3 RETURNING *`,
-        [status, resultDesc, checkoutRequestId]
+async function updateTransactionStatus(checkoutRequestId, status, resultDesc, tenantId) {
+  return withTenant(tenantId, async (client) => {
+    const result = await client.query(
+      `UPDATE transactions SET status = $1, result_desc = $2
+       WHERE checkout_request_id = $3 AND tenant_id = $4 RETURNING *`,
+      [status, resultDesc, checkoutRequestId, tenantId]
     );
     return result.rows[0];
+  });
 }
 
-async function getLatestTransactionByPhone(phone) {
-    const result = await pool.query(
-        `SELECT * FROM transactions WHERE phone = $1 ORDER BY created_at DESC LIMIT 1`,
-        [phone]
+async function getLatestTransactionByPhone(phone, tenantId) {
+  return withTenant(tenantId, async (client) => {
+    const result = await client.query(
+      `SELECT * FROM transactions WHERE phone = $1 AND tenant_id = $2 ORDER BY created_at DESC LIMIT 1`,
+      [phone, tenantId]
     );
     return result.rows[0];
+  });
 }
-
 
 module.exports = { 
-    getAccessToken, 
-    initiateStkPush, 
-    getTransaction, 
-    updateTransactionStatus,
-    getLatestTransactionByPhone,
-    getTransactionByToken,
+  getAccessToken, 
+  initiateStkPush, 
+  getTransaction, 
+  updateTransactionStatus,
+  getLatestTransactionByPhone,
+  getTransactionByToken,
 };

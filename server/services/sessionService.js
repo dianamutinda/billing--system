@@ -1,28 +1,37 @@
-const pool = require('../db');
+const { pool, withTenant } = require('../db');
 const { revoke } = require('./networkService');
 
 async function createSession(transaction, pkg, tenantId) {
   const expiresAt = new Date(Date.now() + pkg.duration_minutes * 60 * 1000);
 
-  const result = await pool.query(
-    `INSERT INTO sessions (phone_number, package_id, package_name, expires_at, token, tenant_id)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-    [transaction.phone, pkg.id, pkg.label, expiresAt, transaction.token, tenantId]
-  );
-  return result.rows[0];
+  return withTenant(tenantId, async (client) => {
+    const result = await client.query(
+      `INSERT INTO sessions (phone_number, package_id, package_name, expires_at, token, tenant_id)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [transaction.phone, pkg.id, pkg.label, expiresAt, transaction.token, tenantId]
+    );
+    return result.rows[0];
+  });
 }
 
-async function getAllSessions() {
-  const result = await pool.query('SELECT * FROM sessions ORDER BY started_at DESC');
-  return result.rows;
+async function getAllSessions(tenantId) {
+  return withTenant(tenantId, async (client) => {
+    const result = await client.query(
+      'SELECT * FROM sessions WHERE tenant_id = $1 ORDER BY started_at DESC',
+      [tenantId]
+    );
+    return result.rows;
+  });
 }
 
 async function getActiveSessionByPhone(phone, tenantId) {
-  const result = await pool.query(
-    `SELECT * FROM sessions WHERE phone_number = $1 AND tenant_id = $2 AND status = 'active' AND expires_at > now()`,
-    [phone, tenantId]
-  );
-  return result.rows[0];
+  return withTenant(tenantId, async (client) => {
+    const result = await client.query(
+      `SELECT * FROM sessions WHERE phone_number = $1 AND tenant_id = $2 AND status = 'active' AND expires_at > now()`,
+      [phone, tenantId]
+    );
+    return result.rows[0];
+  });
 }
 
 async function getActiveSessionByToken(token) {
