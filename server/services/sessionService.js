@@ -17,7 +17,7 @@ async function createSession(transaction, pkg, tenantId) {
 async function getAllSessions(tenantId) {
   return withTenant(tenantId, async (client) => {
     const result = await client.query(
-      'SELECT * FROM sessions WHERE tenant_id = $1 ORDER BY started_at DESC',
+      'SELECT * FROM sessions WHERE tenant_id = $1 ORDER BY started_at DESC LIMIT 200',
       [tenantId]
     );
     return result.rows;
@@ -42,16 +42,48 @@ async function getActiveSessionByToken(token) {
   return result.rows[0];
 }
 
-async function expireOldSessions() {
-  const result = await pool.query(
-    `SELECT * FROM sessions WHERE status = 'active' AND expires_at < now()`
-  );
+let sweeping = false;
 
-  for (const session of result.rows) {
-    await revoke(session);
-    await pool.query(`UPDATE sessions SET status = 'expired' WHERE id = $1`, [session.id]);
-    console.log(`session ${session.id} expired for ${session.phone_number}`);
+async function expireOldSessions() {
+  if (sweeping) return;
+  sweeping = true;
+  try {
+    const { rows } = await pool.query(
+      `SELECT * FROM sessions
+       WHERE status = 'active' AND expires_at < now()
+       ORDER BY expires_at`
+    );
+
+    const failedTenants = new Set();
+
+    for (const session of rows) {
+      if (failedTenants.has(session.tenant_id)) continue;
+      try {
+        const result = await revoke(session);
+if (!result.success) throw new Error(result.error);
+        await pool.query(
+          `UPDATE sessions SET status = 'expired' WHERE id = $1 AND status = 'active'`,
+          [session.id]
+        );
+        console.log(`session ${session.id} expired (tenant ${session.tenant_id})`);
+      } catch (err) {
+        failedTenants.add(session.tenant_id);
+        console.error(`expiry failed for session ${session.id} (tenant ${session.tenant_id}):`, err.message);
+      }
+    }
+  } finally {
+    sweeping = false;
   }
+}
+
+async function getAllSessionsForOwner(limit = 200) {
+  const result = await pool.query(
+    `SELECT s.*, t.business_name
+     FROM sessions s JOIN tenants t ON t.id = s.tenant_id
+     ORDER BY s.started_at DESC LIMIT $1`,
+    [limit]
+  );
+  return result.rows;
 }
 
 module.exports = {
@@ -60,4 +92,5 @@ module.exports = {
   expireOldSessions,
   getActiveSessionByPhone,
   getActiveSessionByToken,
+  getAllSessionsForOwner,
 };
