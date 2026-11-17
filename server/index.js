@@ -5,6 +5,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rl = require('express-rate-limit');
+const cookieParser = require('cookie-parser');
 
 // Works with express-rate-limit v7 and v8
 const rateLimit = rl.rateLimit || rl;
@@ -14,6 +15,10 @@ const packageRoutes = require('./routes/packages');
 const mpesaRoutes = require('./routes/mpesa');
 const purchaseRoutes = require('./routes/purchase');
 const sessionsRoutes = require('./routes/sessions');
+const adminAuthRoutes = require('./routes/adminAuth');
+const requireAdmin = require('./middleware/requireAdmin');
+const adminTenantsRoutes = require('./routes/adminTenants');
+const tenantAuthRoutes = require('./routes/tenantAuth');
 
 const {
   getAllSessionsForOwner,
@@ -33,8 +38,9 @@ const allowedOrigins = [
   process.env.FRONTEND_URL,
 ].filter(Boolean);
 
-app.use(cors({ origin: allowedOrigins }));
+app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(express.json({ limit: '10kb' }));
+app.use(cookieParser());
 
 // 2. Rate limiters
 // Customers at one venue share one public IP, so limits are keyed on what
@@ -123,6 +129,9 @@ app.use('/api/packages', packageRoutes);
 app.use('/api/mpesa', mpesaRoutes);
 app.use('/api/purchase', purchaseRoutes);
 app.use('/api/sessions', sessionsRoutes);
+app.use('/api/admin', adminAuthRoutes);
+app.use('/api/admin/tenants', requireAdmin, adminTenantsRoutes);
+app.use('/api/tenant', tenantAuthRoutes);
 
 // 5. Global error handler (must come AFTER all routes)
 app.use((err, req, res, next) => {
