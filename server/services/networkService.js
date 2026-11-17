@@ -15,17 +15,26 @@ function safeClose(conn) {
 
 // Removes any active connection and any hotspot user with this name.
 // Safe to call when nothing exists.
+async function countItems(conn, path, filter) {
+  const r = await conn.write(path, ['=count-only=', filter]);
+  return Number(r && r[0] && r[0].ret) || 0;
+}
+
 async function removeUser(conn, username) {
   if (!/^254\d{9}$/.test(username)) throw new Error('Invalid username');
 
-  const active = await conn.write('/ip/hotspot/active/print', [`?user=${username}`]);
-  for (const a of active) {
-    await conn.write('/ip/hotspot/active/remove', [`=.id=${a['.id']}`]);
+  if ((await countItems(conn, '/ip/hotspot/active/print', `?user=${username}`)) > 0) {
+    const active = await conn.write('/ip/hotspot/active/print', [`?user=${username}`]);
+    for (const a of active) {
+      await conn.write('/ip/hotspot/active/remove', [`=.id=${a['.id']}`]);
+    }
   }
 
-  const users = await conn.write('/ip/hotspot/user/print', [`?name=${username}`]);
-  for (const u of users) {
-    await conn.write('/ip/hotspot/user/remove', [`=.id=${u['.id']}`]);
+  if ((await countItems(conn, '/ip/hotspot/user/print', `?name=${username}`)) > 0) {
+    const users = await conn.write('/ip/hotspot/user/print', [`?name=${username}`]);
+    for (const u of users) {
+      await conn.write('/ip/hotspot/user/remove', [`=.id=${u['.id']}`]);
+    }
   }
 }
 

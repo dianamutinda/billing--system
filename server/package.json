@@ -15,7 +15,7 @@
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "node-routeros": "^1.6.8",
+    "node-routeros": "^1.6.9",
     "pg": "^8.23.1"
   },
   "devDependencies": {

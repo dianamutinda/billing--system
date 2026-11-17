@@ -1,41 +1,32 @@
-const express = require ('express');
+const express = require('express');
+const crypto = require('crypto');
 const router = express.Router();
-const { getTransaction, updateTransactionStatus } = require('../services/paymentService');
-const { getPackageById } = require('../services/packageService');
-const { createSession } = require('../services/sessionService');
-const { activate } = require('../services/networkService');
+const { processStkCallback } = require('../services/paymentService');
+const { activateSession } = require('../services/sessionService');
 
+function secretMatches(given) {
+  const a = Buffer.from(String(given));
+  const b = Buffer.from(process.env.MPESA_CALLBACK_SECRET || '');
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
 
 router.post('/callback/:secret', async (req, res) => {
-    if (req.params.secret !== process.env.MPESA_CALLBACK_SECRET) {
-        return res.status(404).end();
-    }
-    try {
-        console.log('Callback received:', JSON.stringify(req.body, null, 2));
-        const callback = req.body.Body?.stkCallback;
+  if (!secretMatches(req.params.secret)) return res.status(404).end();
 
-        if (callback) {
-            const { CheckoutRequestID, ResultCode, ResultDesc } = callback;
-            const existing = await getTransaction(CheckoutRequestID);
-
-            if (existing && existing.status === 'pending') {
-                const paid = ResultCode === 0;
-                const status = paid ? 'paid' : 'failed';
-                await updateTransactionStatus(CheckoutRequestID, status, ResultDesc);
-
-                if (paid) {
-                    const pkg = await getPackageById(existing.package_id, existing.tenant_id);
-                    const session = await createSession(existing, pkg, existing.tenant_id);
-                    await activate(session);
-                    console.log(`Session created for ${session.phone_number}, expires ${session.expires_at}`);
-                }
-        }
-        res.json({ ResultCode: 0, ResultDesc: 'Accepted' });
+  try {
+    const cb = req.body?.Body?.stkCallback;
+    if (cb && cb.CheckoutRequestID) {
+      console.log(`M-Pesa callback ${cb.CheckoutRequestID} result ${cb.ResultCode}`);
+      const outcome = await processStkCallback(cb);
+      if (outcome && outcome.session) {
+        await activateSession(outcome.session);
+      }
     }
-    } catch (err) {
-        console.error('M-Pesa callback processing failed:', err);
-        res.json({ ResultCode: 0, ResultDesc: 'Accepted' }); // still ACK to Safaricom
-    }
+  } catch (err) {
+    console.error('M-Pesa callback processing failed:', err.message);
+  }
+
+  res.json({ ResultCode: 0, ResultDesc: 'Accepted' });
 });
 
 module.exports = router;

@@ -1,4 +1,6 @@
-const { withTenant } = require('../db')
+const { withTenant } = require('../db');
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 async function getAllPackages(tenantId) {
   return withTenant(tenantId, async (client) => {
@@ -11,6 +13,7 @@ async function getAllPackages(tenantId) {
 }
 
 async function getPackageById(id, tenantId) {
+  if (!UUID_RE.test(String(id))) return undefined;
   return withTenant(tenantId, async (client) => {
     const result = await client.query(
       'SELECT * FROM packages WHERE id = $1 AND tenant_id = $2',

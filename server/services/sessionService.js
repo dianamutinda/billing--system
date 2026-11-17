@@ -1,5 +1,5 @@
 const { pool, withTenant } = require('../db');
-const { revoke } = require('./networkService');
+const { revoke, activate } = require('./networkService');
 
 async function createSession(transaction, pkg, tenantId) {
   const expiresAt = new Date(Date.now() + pkg.duration_minutes * 60 * 1000);
@@ -40,6 +40,41 @@ async function getActiveSessionByToken(token) {
     [token]
   );
   return result.rows[0];
+}
+
+async function activateSession(session) {
+  const result = await activate(session);
+  if (result.success) {
+    await pool.query(
+      `UPDATE sessions SET network_activated = true WHERE id = $1`,
+      [session.id]
+    );
+    return true;
+  }
+  console.error(`activation failed for session ${session.id} (tenant ${session.tenant_id}): ${result.error}`);
+  return false;
+}
+
+let activating = false;
+
+async function activatePendingSessions() {
+  if (activating) return;
+  activating = true;
+  try {
+    const { rows } = await pool.query(
+      `SELECT * FROM sessions
+       WHERE status = 'active' AND network_activated = false AND expires_at > now()
+       ORDER BY started_at LIMIT 50`
+    );
+    const failedTenants = new Set();
+    for (const session of rows) {
+      if (failedTenants.has(session.tenant_id)) continue;
+      const ok = await activateSession(session);
+      if (!ok) failedTenants.add(session.tenant_id);
+    }
+  } finally {
+    activating = false;
+  }
 }
 
 let sweeping = false;
@@ -93,4 +128,7 @@ module.exports = {
   getActiveSessionByPhone,
   getActiveSessionByToken,
   getAllSessionsForOwner,
+  activatePendingSessions,
+  activateSession,
+
 };
