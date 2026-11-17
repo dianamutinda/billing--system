@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useSessionPolling } from '../hooks/useSessionPolling';
+import { useSessionPolling } from '../../hooks/useSessionPolling';
 
 export function ProcessingScreen({ token, onActive, onFailed, onRetry }) {
   // Capture message (or resultDesc) from polling response

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getPackages } from '../api/packages';
+import { getPackages } from '../../api/packages';
 
 export function PackageList({ onSelect }) {
   const [packages, setPackages] = useState([]);

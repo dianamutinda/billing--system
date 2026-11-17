@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { initiatePurchase } from '../api/purchase';
+import { initiatePurchase } from '../../api/purchase';
 
 /**
  * Normalizes any Kenyan mobile input (07..., 01..., 7..., 1..., +254...)
