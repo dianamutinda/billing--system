@@ -1,42 +1,86 @@
-import { PACKAGES } from '../api/packages';
+import { useEffect, useState } from 'react';
+import { getPackages } from '../api/packages';
 
 export function PackageList({ onSelect }) {
+  const [packages, setPackages] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const loadPackages = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const data = await getPackages();
+      // Supports either a direct array or { packages: [...] } from your route
+      setPackages(Array.isArray(data) ? data : data.packages || []);
+    } catch (err) {
+      setError(err.message || 'Could not load packages.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadPackages();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="mx-auto max-w-md p-6 text-center text-slate-600">
+        Loading Wi-Fi packages...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="mx-auto max-w-md p-6 text-center">
+        <p className="mb-4 text-sm text-red-600">{error}</p>
+        <button
+          onClick={loadPackages}
+          className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white"
+        >
+          Try Again
+        </button>
+      </div>
+    );
+  }
+
+  if (packages.length === 0) {
+    return (
+      <div className="mx-auto max-w-md p-6 text-center text-slate-600">
+        No Wi-Fi packages are available right now.
+      </div>
+    );
+  }
+
   return (
-    <div className="max-w-md mx-auto p-4">
-      <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide">
-        Stay Connected
-      </p>
-      <h1 className="text-2xl font-bold text-slate-900 mt-1">
-        Choose Your Internet Package
-      </h1>
-      <p className="text-slate-500 mt-1 mb-6">Fast. Reliable. Affordable.</p>
-            <div className="space-y-3">
-        {PACKAGES.map((pkg) => (
-          <div
+    <div className="mx-auto max-w-md p-6">
+      <h1 className="mb-1 text-xl font-semibold text-slate-900">Choose a Wi-Fi Package</h1>
+      <p className="mb-5 text-sm text-slate-500">Select a plan to connect via M-Pesa</p>
+
+      <div className="space-y-3">
+        {packages.map((pkg) => (
+          <button
             key={pkg.id}
-            className="border border-slate-200 rounded-xl p-4 bg-white relative"
+            type="button"
+            onClick={() => onSelect(pkg)}
+            className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-emerald-500 hover:ring-1 hover:ring-emerald-500"
           >
-            {pkg.popular && (
-              <span className="absolute top-3 right-3 bg-blue-100 text-blue-600 text-xs font-semibold px-2 py-0.5 rounded-full">
-                Most Popular
-              </span>
-            )}
-            <div className="flex justify-between items-start pr-16">
-              <div>
-                <h2 className="font-semibold text-slate-900">{pkg.name}</h2>
-                <p className="text-sm text-slate-500 mt-0.5">{pkg.description}</p>
-              </div>
-              <p className="font-semibold text-slate-900 whitespace-nowrap">
-                KSh {pkg.price}
-              </p>
+            <div>
+              <div className="font-medium text-slate-900">{pkg.label}</div>
+              {pkg.duration_minutes && (
+                <div className="text-xs text-slate-500">
+                  {pkg.duration_minutes >= 60
+                    ? `${Math.round(pkg.duration_minutes / 60)} hr${pkg.duration_minutes >= 120 ? 's' : ''}`
+                    : `${pkg.duration_minutes} mins`}
+                </div>
+              )}
             </div>
-            <button
-              onClick={() => onSelect(pkg.id)}
-              className="mt-3 w-full bg-blue-600 text-white font-medium py-2 rounded-lg hover:bg-blue-700"
-            >
-              Buy
-            </button>
-          </div>
+            <div className="text-base font-semibold text-emerald-600">
+              KES {pkg.amount}
+            </div>
+          </button>
         ))}
       </div>
     </div>

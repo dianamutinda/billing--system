@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { getSessionStatus } from '../api/purchase';
 
-export function useSessionPolling(token, active, timeoutMs = 60000) {
+const TERMINAL_STATUSES = new Set(['active', 'failed', 'not_found', 'processing']);
+
+export function useSessionPolling(token, active, timeoutMs = 120000) {
   const [result, setResult] = useState({ status: 'pending' });
   const [checking, setChecking] = useState(false);
   const intervalRef = useRef(null);
@@ -10,11 +12,17 @@ export function useSessionPolling(token, active, timeoutMs = 60000) {
   useEffect(() => {
     if (!active || !token) return;
 
+    let cancelled = false;
+
     const poll = async () => {
       const data = await getSessionStatus(token);
+      if (cancelled) return;
+
+      if (data.status === 'error') return;
+
       setResult(data);
 
-      if (data.status === 'active' || data.status === 'failed') {
+      if (TERMINAL_STATUSES.has(data.status)) {
         clearInterval(intervalRef.current);
         clearTimeout(timeoutRef.current);
       }
@@ -24,11 +32,15 @@ export function useSessionPolling(token, active, timeoutMs = 60000) {
     intervalRef.current = setInterval(poll, 3000);
 
     timeoutRef.current = setTimeout(() => {
+      if (cancelled) return;
       clearInterval(intervalRef.current);
-      setResult({ status: 'timeout' });
+      setResult((prev) =>
+        TERMINAL_STATUSES.has(prev.status) ? prev : { status: 'timeout' }
+      );
     }, timeoutMs);
 
     return () => {
+      cancelled = true;
       clearInterval(intervalRef.current);
       clearTimeout(timeoutRef.current);
     };
@@ -39,8 +51,14 @@ export function useSessionPolling(token, active, timeoutMs = 60000) {
     setChecking(true);
     const data = await getSessionStatus(token);
     setChecking(false);
-    setResult(data);
+
+    if (data.status !== 'error') {
+      setResult(data);
+    }
   }, [token, checking]);
 
-  return { ...result, checking, recheck };
+  // Normalize message across message, resultDesc, or result_desc
+  const errorMessage = result.message || result.resultDesc || result.result_desc;
+
+  return { ...result, message: errorMessage, checking, recheck };
 }
