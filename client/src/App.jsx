@@ -10,6 +10,8 @@ import TenantDashboard from './pages/tenant/Dashboard';
 import TenantSessions from './pages/tenant/Sessions';
 import TenantPackages from './pages/tenant/Packages';
 import TenantTransactions from './pages/tenant/Transactions';
+import TenantPayment from './pages/tenant/Payment';
+import TenantBusiness from './pages/tenant/Business';
 
 import AdminDashboard from './pages/admin/Dashboard';
 import AdminTenants from './pages/admin/Tenants';
@@ -30,6 +32,8 @@ export default function App() {
           <Route path="sessions" element={<TenantSessions />} />
           <Route path="packages" element={<TenantPackages />} />
           <Route path="transactions" element={<TenantTransactions />} />
+          <Route path="payment-settings" element={<TenantPayment />} />
+          <Route path="business-settings" element={<TenantBusiness />} />
         </Route>
 
         {/* Platform Owner Dashboard */}

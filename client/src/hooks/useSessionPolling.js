@@ -1,7 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { getSessionStatus } from '../api/purchase';
 
-const TERMINAL_STATUSES = new Set(['active', 'failed', 'not_found', 'processing']);
+const TERMINAL_STATUSES = new Set([
+  'active',
+  'failed',
+  'not_found'
+]);
 
 export function useSessionPolling(token, active, timeoutMs = 120000) {
   const [result, setResult] = useState({ status: 'pending' });
