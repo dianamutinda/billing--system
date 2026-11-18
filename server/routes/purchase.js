@@ -25,7 +25,7 @@ router.post('/:portalSlug', async (req, res) => {
       return res.status(400).json({ error: 'packageId is required' });
     }
 
-    const pkg = await getPackageById(packageId, tenant.id);
+    const pkg = await getPackageById(packageId, tenant.id, { activeOnly: true });
     if (!pkg) {
       return res.status(400).json({ error: 'Invalid packageId.' });
     }
@@ -44,7 +44,7 @@ router.post('/:portalSlug', async (req, res) => {
 
     res.json({ ok: true, token });
   } catch (err) {
-    console.log('POST /api/purchase failed:', err);
+    console.error('POST /api/purchase failed:', err);
     res.status(500).json({ error: 'Something went wrong. Please try again.' });
   }
 });

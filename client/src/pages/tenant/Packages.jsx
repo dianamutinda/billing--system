@@ -1,11 +1,11 @@
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
+
 import {
   Plus,
   Search,
   Pencil,
-  Trash2,
-  Clock,
   Wifi,
   MoreVertical,
   CheckCircle2,
@@ -13,60 +13,34 @@ import {
   X,
   ToggleLeft,
   ToggleRight,
-  Package,
 } from 'lucide-react';
 
 import Select from '../../components/ui/Select';
 
-const initialPackages = [
-  {
-    id: 1,
-    name: '1 Hour Package',
-    price: 20,
-    duration: '1 hour',
-    devices: 1,
-    status: 'Active',
-    sales: 86,
-  },
-  {
-    id: 2,
-    name: 'Daily Package',
-    price: 100,
-    duration: '24 hours',
-    devices: 2,
-    status: 'Active',
-    sales: 42,
-  },
-  {
-    id: 3,
-    name: 'Weekly Package',
-    price: 350,
-    duration: '7 days',
-    devices: 2,
-    status: 'Active',
-    sales: 18,
-  },
-  {
-    id: 4,
-    name: 'Monthly Package',
-    price: 1000,
-    duration: '30 days',
-    devices: 3,
-    status: 'Inactive',
-    sales: 5,
-  },
-];
+import {
+  listPackages,
+  createPackage,
+  updatePackage,
+  toMinutes,
+  splitMinutes,
+} from '../../api/packages.js';
 
 const emptyForm = {
   name: '',
   price: '',
-  duration: '',
-  devices: '1',
-  status: 'Active',
+  durationValue: '',
+  durationUnit: 'hours',
 };
 
 export default function TenantPackages() {
-  const [packages, setPackages] = useState(initialPackages);
+  const [packages, setPackages] = useState([]);
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [statusSavingId, setStatusSavingId] = useState(null);
+
+  const [error, setError] = useState('');
+
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
 
@@ -75,7 +49,77 @@ export default function TenantPackages() {
   const [form, setForm] = useState(emptyForm);
 
   const [openMenu, setOpenMenu] = useState(null);
-  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [menuPosition, setMenuPosition] = useState(null);
+
+  const menuButtonRef = useRef(null);
+  const menuRef = useRef(null);
+
+  function closeMenu() {
+    setOpenMenu(null);
+    setMenuPosition(null);
+  }
+
+  function handleApiFailure(r) {
+    if (r.status === 401) {
+      setError('Your session has expired. Please log in again.');
+      return;
+    }
+
+    setError(
+      `${r.status}: ${r.data?.error || 'Something went wrong'}`
+    );
+  }
+
+  async function load() {
+    setLoading(true);
+
+    try {
+      const r = await listPackages();
+
+      if (r.ok) {
+        setPackages(r.data);
+        setError('');
+      } else {
+        handleApiFailure(r);
+      }
+    } catch {
+      setError('Unable to connect to the server. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  // Close the menu when clicking outside it or scrolling.
+  useEffect(() => {
+    if (!openMenu) return;
+
+    function handleOutsideClick(event) {
+      const clickedMenu = menuRef.current?.contains(event.target);
+      const clickedButton = menuButtonRef.current?.contains(event.target);
+
+      if (!clickedMenu && !clickedButton) {
+        closeMenu();
+      }
+    }
+
+    function handleScroll() {
+      closeMenu();
+    }
+
+    document.addEventListener('pointerdown', handleOutsideClick);
+    document.addEventListener('scroll', handleScroll, true);
+    window.addEventListener('resize', handleScroll);
+
+    return () => {
+      document.removeEventListener('pointerdown', handleOutsideClick);
+      document.removeEventListener('scroll', handleScroll, true);
+      window.removeEventListener('resize', handleScroll);
+    };
+  }, [openMenu]);
 
   const filteredPackages = packages.filter((pkg) => {
     const matchesSearch = pkg.name
@@ -92,128 +136,175 @@ export default function TenantPackages() {
     (pkg) => pkg.status === 'Active'
   ).length;
 
-  const totalSales = packages.reduce(
-    (total, pkg) => total + pkg.sales,
-    0
-  );
+  const inactiveCount = packages.length - activeCount;
 
-  const openAddForm = () => {
+  function toggleMenu(pkgId, event) {
+    if (openMenu === pkgId) {
+      closeMenu();
+      return;
+    }
+
+    const rect = event.currentTarget.getBoundingClientRect();
+
+    const menuHeight = 88;
+    const menuWidth = 192;
+    const gap = 4;
+
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const openUpwards = spaceBelow < menuHeight + gap + 8;
+
+    const preferredTop = openUpwards
+      ? rect.top - menuHeight - gap
+      : rect.bottom + gap;
+
+    const top = Math.max(
+      8,
+      Math.min(preferredTop, window.innerHeight - menuHeight - 8)
+    );
+
+    const left = Math.max(
+      8,
+      Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8)
+    );
+
+    menuButtonRef.current = event.currentTarget;
+
+    setMenuPosition({ top, left });
+    setOpenMenu(pkgId);
+  }
+
+  function openAddForm() {
+    closeMenu();
     setEditingPackage(null);
     setForm(emptyForm);
+    setError('');
     setShowForm(true);
-    setOpenMenu(null);
-  };
+  }
 
-  const openEditForm = (pkg) => {
+  function openEditForm(pkg) {
+    const { value, unit } = splitMinutes(pkg.durationMinutes);
+
+    closeMenu();
+
     setEditingPackage(pkg);
+
     setForm({
       name: pkg.name,
       price: String(pkg.price),
-      duration: pkg.duration,
-      devices: String(pkg.devices),
-      status: pkg.status,
+      durationValue: String(value),
+      durationUnit: unit,
     });
-    setShowForm(true);
-    setOpenMenu(null);
-  };
 
-  const closeForm = () => {
+    setError('');
+    setShowForm(true);
+  }
+
+  function closeForm() {
     setShowForm(false);
     setEditingPackage(null);
     setForm(emptyForm);
-  };
+  }
 
-  const handleFormChange = (field, value) => {
+  function handleFormChange(field, value) {
     setForm((current) => ({
       ...current,
       [field]: value,
     }));
-  };
+  }
 
-  const handleSubmit = (e) => {
+  async function handleSubmit(e) {
     e.preventDefault();
 
     const price = Number(form.price);
-    const devices = Number(form.devices);
+
+    const durationMinutes = toMinutes(
+      form.durationValue,
+      form.durationUnit
+    );
 
     if (
       !form.name.trim() ||
-      !form.duration.trim() ||
-      !Number.isFinite(price) ||
-      price <= 0 ||
-      !Number.isInteger(devices) ||
-      devices < 1
+      !Number.isInteger(price) ||
+      price < 1 ||
+      !Number.isInteger(durationMinutes) ||
+      durationMinutes < 1
     ) {
+      setError(
+        'Enter a package name, a valid price in whole shillings and a valid duration.'
+      );
       return;
     }
 
-    if (editingPackage) {
-      setPackages((current) =>
-        current.map((pkg) =>
-          pkg.id === editingPackage.id
-            ? {
-                ...pkg,
-                name: form.name.trim(),
-                price,
-                duration: form.duration.trim(),
-                devices,
-                status: form.status,
-              }
-            : pkg
-        )
-      );
-    } else {
-      const newPackage = {
-        id: Date.now(),
-        name: form.name.trim(),
-        price,
-        duration: form.duration.trim(),
-        devices,
-        status: form.status,
-        sales: 0,
-      };
+    setSaving(true);
+    setError('');
 
-      setPackages((current) => [newPackage, ...current]);
+    const fields = {
+      name: form.name.trim(),
+      price,
+      durationMinutes,
+    };
+
+    try {
+      const r = editingPackage
+        ? await updatePackage(editingPackage.id, fields)
+        : await createPackage(fields);
+
+      if (!r.ok) {
+        handleApiFailure(r);
+        return;
+      }
+
+      closeForm();
+      await load();
+    } catch {
+      setError('Unable to save the package. Please try again.');
+    } finally {
+      setSaving(false);
     }
+  }
 
-    closeForm();
-  };
+  async function toggleStatus(pkg) {
+    closeMenu();
+    setError('');
 
-  const toggleStatus = (id) => {
-    setPackages((current) =>
-      current.map((pkg) =>
-        pkg.id === id
-          ? {
-              ...pkg,
-              status:
-                pkg.status === 'Active' ? 'Inactive' : 'Active',
-            }
-          : pkg
-      )
-    );
+    setStatusSavingId(pkg.id);
 
-    setOpenMenu(null);
-  };
+    // An inactive package should be activated.
+    // An active package should be deactivated.
+    const nextActive = pkg.status !== 'Active';
 
-  const confirmDelete = () => {
-    if (!deleteTarget) return;
+    try {
+      const r = await updatePackage(pkg.id, {
+        active: nextActive,
+      });
 
-    setPackages((current) =>
-      current.filter((pkg) => pkg.id !== deleteTarget.id)
-    );
+      if (!r.ok) {
+        handleApiFailure(r);
+        return;
+      }
 
-    setDeleteTarget(null);
-    setOpenMenu(null);
-  };
+      await load();
+    } catch {
+      setError('Unable to update package status. Please try again.');
+    } finally {
+      setStatusSavingId(null);
+    }
+  }
+
+  const selectedPackage = packages.find(
+    (pkg) => pkg.id === openMenu
+  );
 
   return (
     <div className="space-y-6">
+
       {/* Page header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-[var(--text-primary)]">
             Packages
           </h1>
+
           <p className="mt-1 text-sm text-[var(--text-secondary)]">
             Create and manage the internet packages available to your customers.
           </p>
@@ -222,12 +313,30 @@ export default function TenantPackages() {
         <button
           type="button"
           onClick={openAddForm}
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-[var(--primary)] px-4 py-2.5 text-sm font-medium text-white transition hover:opacity-90"
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-[var(--primary)] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[var(--primary-hover)]"
         >
           <Plus size={18} />
           Add Package
         </button>
       </div>
+
+      {/* Error message */}
+      {error && (
+        <div
+          role="alert"
+          className="flex items-start justify-between gap-3 rounded-lg border border-[var(--danger)]/20 bg-[var(--danger)]/10 p-3 text-sm text-[var(--danger)]"
+        >
+          <p>{error}</p>
+
+          <button
+            type="button"
+            onClick={() => setError('')}
+            aria-label="Dismiss error"
+          >
+            <X size={17} />
+          </button>
+        </div>
+      )}
 
       {/* Summary cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -244,19 +353,22 @@ export default function TenantPackages() {
         />
 
         <SummaryCard
-          label="Total Purchases"
-          value={totalSales}
-          icon={Clock}
+          label="Hidden Packages"
+          value={inactiveCount}
+          icon={XCircle}
         />
       </div>
 
       {/* Packages table */}
       <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-surface)]">
+
+        {/* Search and filters */}
         <div className="flex flex-col gap-4 border-b border-[var(--border)] p-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="font-semibold text-[var(--text-primary)]">
               All Packages
             </h2>
+
             <p className="mt-1 text-sm text-[var(--text-secondary)]">
               Manage your available internet plans.
             </p>
@@ -274,7 +386,7 @@ export default function TenantPackages() {
                 placeholder="Search packages..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] py-2 pl-9 pr-3 text-sm text-[var(--text-primary)] outline-none transition focus:border-[var(--primary)] sm:w-56"
+                className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] py-2.5 pl-9 pr-3 text-sm text-[var(--text-primary)] outline-none transition focus:border-[var(--primary)] placeholder:text-[var(--text-muted)] sm:w-56"
               />
             </div>
 
@@ -291,15 +403,14 @@ export default function TenantPackages() {
           </div>
         </div>
 
+        {/* Table */}
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[750px] text-left">
+          <table className="w-full min-w-[600px] text-left">
             <thead className="bg-[var(--bg-muted)]">
               <tr className="text-xs font-medium uppercase tracking-wide text-[var(--text-secondary)]">
                 <th className="px-5 py-3">Package</th>
                 <th className="px-5 py-3">Price</th>
                 <th className="px-5 py-3">Duration</th>
-                <th className="px-5 py-3">Devices</th>
-                <th className="px-5 py-3">Purchases</th>
                 <th className="px-5 py-3">Status</th>
                 <th className="px-5 py-3 text-right">Actions</th>
               </tr>
@@ -316,7 +427,7 @@ export default function TenantPackages() {
                   </td>
 
                   <td className="px-5 py-4 font-medium">
-                    KES {pkg.price.toLocaleString()}
+                    KES {Number(pkg.price).toLocaleString('en-KE')}
                   </td>
 
                   <td className="px-5 py-4 text-[var(--text-secondary)]">
@@ -324,75 +435,23 @@ export default function TenantPackages() {
                   </td>
 
                   <td className="px-5 py-4">
-                    {pkg.devices}
-                  </td>
-
-                  <td className="px-5 py-4">
-                    {pkg.sales}
-                  </td>
-
-                  <td className="px-5 py-4">
                     <StatusBadge status={pkg.status} />
                   </td>
 
                   <td className="px-5 py-4">
-                    <div className="relative flex justify-end">
+                    <div className="flex justify-end">
                       <button
+                        ref={openMenu === pkg.id ? menuButtonRef : null}
                         type="button"
                         title="Package actions"
                         aria-label={`Actions for ${pkg.name}`}
                         aria-expanded={openMenu === pkg.id}
-                        onClick={() =>
-                          setOpenMenu((current) =>
-                            current === pkg.id ? null : pkg.id
-                          )
-                        }
-                        className="rounded-md p-2 text-[var(--text-secondary)] transition hover:bg-[var(--primary-soft)] hover:text-[var(--primary)]"
+                        disabled={statusSavingId === pkg.id}
+                        onClick={(e) => toggleMenu(pkg.id, e)}
+                        className="rounded-md p-2 text-[var(--text-secondary)] transition hover:bg-[var(--primary-soft)] hover:text-[var(--primary)] disabled:opacity-50"
                       >
                         <MoreVertical size={18} />
                       </button>
-
-                      {openMenu === pkg.id && (
-                        <div className="absolute right-8 top-0 z-20 w-48 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] py-1 shadow-lg">
-                          <button
-                            type="button"
-                            onClick={() => openEditForm(pkg)}
-                            className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-[var(--text-primary)] transition hover:bg-[var(--bg-muted)]"
-                          >
-                            <Pencil size={15} />
-                            Edit package
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => toggleStatus(pkg.id)}
-                            className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-[var(--text-primary)] transition hover:bg-[var(--bg-muted)]"
-                          >
-                            {pkg.status === 'Active' ? (
-                              <ToggleLeft size={16} />
-                            ) : (
-                              <ToggleRight size={16} />
-                            )}
-                            {pkg.status === 'Active'
-                              ? 'Deactivate'
-                              : 'Activate'}
-                          </button>
-
-                          <div className="my-1 border-t border-[var(--border)]" />
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setDeleteTarget(pkg);
-                              setOpenMenu(null);
-                            }}
-                            className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-[var(--danger)] transition hover:bg-[var(--danger)]/10"
-                          >
-                            <Trash2 size={15} />
-                            Delete package
-                          </button>
-                        </div>
-                      )}
                     </div>
                   </td>
                 </tr>
@@ -401,10 +460,12 @@ export default function TenantPackages() {
               {filteredPackages.length === 0 && (
                 <tr>
                   <td
-                    colSpan="7"
+                    colSpan="5"
                     className="px-5 py-12 text-center text-sm text-[var(--text-secondary)]"
                   >
-                    No packages found.
+                    {loading
+                      ? 'Loading packages...'
+                      : 'No packages found.'}
                   </td>
                 </tr>
               )}
@@ -412,12 +473,53 @@ export default function TenantPackages() {
           </table>
         </div>
 
+        {/* Table footer */}
         <div className="border-t border-[var(--border)] px-5 py-3">
           <p className="text-xs text-[var(--text-muted)]">
             Showing {filteredPackages.length} of {packages.length} packages
           </p>
         </div>
       </div>
+
+      {/* Dropdown rendered outside the table */}
+      {openMenu && menuPosition && selectedPackage &&
+        createPortal(
+          <div
+            ref={menuRef}
+            className="fixed z-[100] w-48 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] py-1 shadow-lg"
+            style={{
+              top: menuPosition.top,
+              left: menuPosition.left,
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => openEditForm(selectedPackage)}
+              className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-[var(--text-primary)] transition hover:bg-[var(--bg-muted)]"
+            >
+              <Pencil size={15} />
+              Edit package
+            </button>
+
+            <button
+              type="button"
+              disabled={statusSavingId === selectedPackage.id}
+              onClick={() => toggleStatus(selectedPackage)}
+              className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-[var(--text-primary)] transition hover:bg-[var(--bg-muted)] disabled:opacity-50"
+            >
+              {selectedPackage.status === 'Active' ? (
+                <ToggleLeft size={16} />
+              ) : (
+                <ToggleRight size={16} />
+              )}
+
+              {selectedPackage.status === 'Active'
+                ? 'Deactivate'
+                : 'Activate'}
+            </button>
+          </div>,
+          document.body
+        )}
 
       {/* Add / Edit modal */}
       {showForm && (
@@ -427,6 +529,7 @@ export default function TenantPackages() {
               <h2 className="text-lg font-semibold text-[var(--text-primary)]">
                 {editingPackage ? 'Edit Package' : 'Add Package'}
               </h2>
+
               <p className="mt-1 text-sm text-[var(--text-secondary)]">
                 {editingPackage
                   ? 'Update the details of this internet package.'
@@ -456,126 +559,74 @@ export default function TenantPackages() {
               />
             </FormField>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <FormField label="Price (KES)">
+            <FormField label="Price (KES)">
+              <input
+                required
+                type="number"
+                min="1"
+                step="1"
+                value={form.price}
+                onChange={(e) =>
+                  handleFormChange('price', e.target.value)
+                }
+                placeholder="e.g. 20"
+                className="form-input"
+              />
+            </FormField>
+
+            <FormField label="Duration">
+              <div className="flex gap-2">
                 <input
                   required
                   type="number"
                   min="1"
                   step="1"
-                  value={form.price}
+                  value={form.durationValue}
                   onChange={(e) =>
-                    handleFormChange('price', e.target.value)
+                    handleFormChange('durationValue', e.target.value)
                   }
-                  placeholder="e.g. 20"
-                  className="form-input"
+                  placeholder="e.g. 1"
+                  className="form-input min-w-0 flex-1"
                 />
-              </FormField>
 
-              <FormField label="Duration">
-                <input
-                  required
-                  value={form.duration}
-                  onChange={(e) =>
-                    handleFormChange('duration', e.target.value)
-                  }
-                  placeholder="e.g. 1 hour"
-                  className="form-input"
-                />
-              </FormField>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <FormField label="Device limit">
                 <Select
-                  value={form.devices}
+                  value={form.durationUnit}
                   onChange={(value) =>
-                    handleFormChange('devices', value)
+                    handleFormChange('durationUnit', value)
                   }
-                  width="w-full"
+                  width="w-40"
                   options={[
-                    { label: '1 device', value: '1' },
-                    { label: '2 devices', value: '2' },
-                    { label: '3 devices', value: '3' },
-                    { label: '5 devices', value: '5' },
+                    { label: 'Minutes', value: 'minutes' },
+                    { label: 'Hours', value: 'hours' },
+                    { label: 'Days', value: 'days' },
                   ]}
                 />
-              </FormField>
-
-              <FormField label="Status">
-                <Select
-                  value={form.status}
-                  onChange={(value) =>
-                    handleFormChange('status', value)
-                  }
-                  width="w-full"
-                  options={[
-                    { label: 'Active', value: 'Active' },
-                    { label: 'Inactive', value: 'Inactive' },
-                  ]}
-                />
-              </FormField>
-            </div>
+              </div>
+            </FormField>
 
             <div className="flex flex-col-reverse gap-3 border-t border-[var(--border)] pt-5 sm:flex-row sm:justify-end">
               <button
                 type="button"
                 onClick={closeForm}
-                className="rounded-lg border border-[var(--border)] px-4 py-2.5 text-sm font-medium text-[var(--text-secondary)] transition hover:bg-[var(--bg-muted)]"
+                disabled={saving}
+                className="rounded-lg border border-[var(--border)] px-4 py-2.5 text-sm font-medium text-[var(--text-secondary)] transition hover:bg-[var(--bg-muted)] disabled:opacity-50"
               >
                 Cancel
               </button>
 
               <button
                 type="submit"
-                className="rounded-lg bg-[var(--primary)] px-5 py-2.5 text-sm font-medium text-white transition hover:opacity-90"
+                disabled={saving}
+                className="rounded-lg bg-[var(--primary)] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[var(--primary-hover)] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {editingPackage ? 'Save Changes' : 'Create Package'}
+                {saving
+                  ? 'Saving...'
+                  : editingPackage
+                    ? 'Save Changes'
+                    : 'Create Package'}
               </button>
             </div>
           </form>
-        </Modal>
-      )}
-
-      {/* Delete confirmation */}
-      {deleteTarget && (
-        <Modal onClose={() => setDeleteTarget(null)}>
-          <div className="flex items-start gap-4">
-            <div className="rounded-full bg-[var(--danger)]/10 p-3">
-              <Trash2 size={20} className="text-[var(--danger)]" />
-            </div>
-
-            <div>
-              <h2 className="font-semibold text-[var(--text-primary)]">
-                Delete package?
-              </h2>
-              <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
-                Are you sure you want to delete{' '}
-                <span className="font-medium text-[var(--text-primary)]">
-                  {deleteTarget.name}
-                </span>
-                ? This action cannot be undone.
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-6 flex justify-end gap-3">
-            <button
-              type="button"
-              onClick={() => setDeleteTarget(null)}
-              className="rounded-lg border border-[var(--border)] px-4 py-2.5 text-sm font-medium text-[var(--text-secondary)] transition hover:bg-[var(--bg-muted)]"
-            >
-              Cancel
-            </button>
-
-            <button
-              type="button"
-              onClick={confirmDelete}
-              className="rounded-lg bg-[var(--danger)] px-4 py-2.5 text-sm font-medium text-white transition hover:opacity-90"
-            >
-              Delete Package
-            </button>
-          </div>
         </Modal>
       )}
     </div>
@@ -618,6 +669,7 @@ function StatusBadge({ status }) {
       ) : (
         <XCircle size={13} />
       )}
+
       {status}
     </span>
   );
@@ -629,6 +681,7 @@ function FormField({ label, children }) {
       <label className="block text-sm font-medium text-[var(--text-primary)]">
         {label}
       </label>
+
       {children}
     </div>
   );

@@ -1,10 +1,13 @@
-import { getPortalSlug } from './packages';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
-export async function initiatePurchase(phone, packageId, slug = getPortalSlug()) {
+export async function initiatePurchase(phone, packageId, slug) {
   if (!slug) {
-    return { status: 'error', code: null, message: 'Missing portal identifier.' };
+    return {
+      status: 'error',
+      code: null,
+      message: 'Missing portal identifier.',
+    };
   }
 
   try {
@@ -12,7 +15,9 @@ export async function initiatePurchase(phone, packageId, slug = getPortalSlug())
       `${API_BASE_URL}/api/purchase/${encodeURIComponent(slug)}`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({ phone, packageId }),
         signal: AbortSignal.timeout(20000),
       }
@@ -32,7 +37,9 @@ export async function initiatePurchase(phone, packageId, slug = getPortalSlug())
       return {
         status: 'rate_limited',
         code: 429,
-        message: data.error || 'Too many attempts for this number. Please wait 10 minutes.',
+        message:
+          data.error ||
+          'Too many attempts for this number. Please wait 10 minutes.',
       };
     }
 
@@ -44,34 +51,54 @@ export async function initiatePurchase(phone, packageId, slug = getPortalSlug())
       };
     }
 
-    return { status: 'ok', token: data.token };
-  } catch (err) {
-    return { status: 'error', code: null, message: 'network_failure' };
+    return {
+      status: 'ok',
+      token: data.token,
+    };
+  } catch {
+    return {
+      status: 'error',
+      code: null,
+      message: 'network_failure',
+    };
   }
 }
 
 export async function getSessionStatus(token) {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/sessions/status`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token }),
-      signal: AbortSignal.timeout(10000),
-    });
+    const response = await fetch(
+      `${API_BASE_URL}/api/sessions/status`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ token }),
+        signal: AbortSignal.timeout(10000),
+      }
+    );
 
     if (!response.ok) {
-      return { status: 'error', code: response.status };
+      return {
+        status: 'error',
+        code: response.status,
+      };
     }
 
-    let data;
     try {
-      data = await response.json();
+      return await response.json();
     } catch {
-      return { status: 'error', code: response.status, message: 'bad_response' };
+      return {
+        status: 'error',
+        code: response.status,
+        message: 'bad_response',
+      };
     }
-
-    return data;
-  } catch (err) {
-    return { status: 'error', code: null, message: 'network_failure' };
+  } catch {
+    return {
+      status: 'error',
+      code: null,
+      message: 'network_failure',
+    };
   }
 }

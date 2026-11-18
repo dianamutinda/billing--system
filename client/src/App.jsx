@@ -2,6 +2,9 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 
 import Portal from './pages/portal/Portal';
+import LoginPage from './pages/auth/LoginPage';
+
+import RequireAuth from './pages/auth/RequireAuth.jsx';
 
 import TenantLayout from './layouts/TenantLayout';
 import AdminLayout from './layouts/AdminLayout';
@@ -23,12 +26,23 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-
         {/* Customer Wi-Fi Portal */}
+        <Route path="/p/:portalSlug" element={<Portal />} />
         <Route path="/" element={<Portal />} />
 
-        {/* Tenant Dashboard */}
-        <Route path="/tenant" element={<TenantLayout />}>
+        {/* Authentication */}
+        <Route path="/tenant/login" element={<LoginPage role="tenant" />} />
+        <Route path="/admin/login" element={<LoginPage role="admin" />} />
+
+        {/* Protected Tenant Dashboard */}
+        <Route
+          path="/tenant"
+          element={
+            <RequireAuth role="tenant">
+              <TenantLayout />
+            </RequireAuth>
+          }
+        >
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<TenantDashboard />} />
           <Route path="sessions" element={<TenantSessions />} />
@@ -38,8 +52,15 @@ export default function App() {
           <Route path="business-settings" element={<TenantBusiness />} />
         </Route>
 
-        {/* Platform Owner Dashboard */}
-        <Route path="/admin" element={<AdminLayout />}>
+        {/* Protected Platform Owner Dashboard */}
+        <Route
+          path="/admin"
+          element={
+            <RequireAuth role="admin">
+              <AdminLayout />
+            </RequireAuth>
+          }
+        >
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<AdminDashboard />} />
           <Route path="tenants" element={<AdminTenants />} />
@@ -50,7 +71,6 @@ export default function App() {
 
         {/* Unknown routes */}
         <Route path="*" element={<Navigate to="/" replace />} />
-
       </Routes>
     </BrowserRouter>
   );

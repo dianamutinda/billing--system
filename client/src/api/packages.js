@@ -1,40 +1,53 @@
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-const DEFAULT_SLUG = import.meta.env.VITE_PORTAL_SLUG;
+import { api } from './http.js';
 
-/**
- * Resolves the tenant portal slug from:
- * 1. URL query param (?portal=...)
- * 2. URL path segment (e.g., /a765320c-f968-4970-b017-00b715aae962)
- * 3. VITE_PORTAL_SLUG fallback for local development
- */
-export function getPortalSlug() {
-  const params = new URLSearchParams(window.location.search);
-  const querySlug = params.get('portal');
-  if (querySlug) return querySlug;
+const UNIT_MINUTES = { minutes: 1, hours: 60, days: 1440 };
 
-  const pathSegment = window.location.pathname.replace(/^\/+|\/+$/g, '').split('/')[0];
-  if (pathSegment) return pathSegment;
-
-  return DEFAULT_SLUG;
+export function toMinutes(value, unit) {
+  return Number(value) * (UNIT_MINUTES[unit] || 0);
 }
 
-export async function getPackages(slug = getPortalSlug()) {
-  if (!slug) {
-    throw new Error('Missing portal identifier.');
-  }
+// Pick the biggest unit that divides evenly, so 1440 shows as "1 day"
+export function splitMinutes(m) {
+  if (m % 1440 === 0) return { value: m / 1440, unit: 'days' };
+  if (m % 60 === 0) return { value: m / 60, unit: 'hours' };
+  return { value: m, unit: 'minutes' };
+}
 
-  const response = await fetch(`${API_BASE}/api/packages/${encodeURIComponent(slug)}`, {
-    signal: AbortSignal.timeout(10000),
+export function formatDuration(m) {
+  const { value, unit } = splitMinutes(m);
+  return `${value} ${value === 1 ? unit.slice(0, -1) : unit}`;
+}
+
+// Server shape -> your screen's shape
+function fromApi(p) {
+  return {
+    id: p.id,
+    name: p.label,
+    price: p.amount,
+    durationMinutes: p.duration_minutes,
+    duration: formatDuration(p.duration_minutes),
+    status: p.active ? 'Active' : 'Inactive',
+  };
+}
+
+export async function listPackages() {
+  const r = await api('/api/tenant/packages');
+  return r.ok ? { ...r, data: r.data.map(fromApi) } : r;
+}
+
+// Server wants camelCase on writes (durationMinutes) but sends snake_case on reads
+export function createPackage({ name, price, durationMinutes }) {
+  return api('/api/tenant/packages', {
+    method: 'POST',
+    body: { label: name, amount: price, durationMinutes },
   });
+}
 
-  if (response.status === 404) {
-    throw new Error('Wi-Fi hotspot not found.');
-  }
-
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || 'Could not load packages');
-  }
-
-  return response.json();
+export function updatePackage(id, { name, price, durationMinutes, active }) {
+  const body = {};
+  if (name !== undefined) body.label = name;
+  if (price !== undefined) body.amount = price;
+  if (durationMinutes !== undefined) body.durationMinutes = durationMinutes;
+  if (active !== undefined) body.active = active;
+  return api(`/api/tenant/packages/${id}`, { method: 'PATCH', body });
 }

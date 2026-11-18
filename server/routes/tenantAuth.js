@@ -111,7 +111,7 @@ router.post('/change-password', requireTenant, changePasswordLimiter, async (req
       return res.status(400).json({ error: 'New password must be different' });
     }
 
-    const { rows } = await Pool.query(
+    const { rows } = await pool.query(
       'SELECT password_hash FROM tenants WHERE id = $1',
       [req.tenantId]
     );
@@ -120,7 +120,7 @@ router.post('/change-password', requireTenant, changePasswordLimiter, async (req
     }
 
     const newHash = await bcrypt.hash(newPassword, 12);
-    await Pool.query(
+    await pool.query(
       'UPDATE tenants SET password_hash = $1, must_change_password = false WHERE id = $2',
       [newHash, req.tenantId]
     );

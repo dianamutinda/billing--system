@@ -134,6 +134,9 @@ app.use('/api/sessions', sessionsRoutes);
 app.use('/api/admin', adminAuthRoutes);
 app.use('/api/admin/tenants', requireAdmin, adminTenantsRoutes);
 app.use('/api/tenant', tenantAuthRoutes);
+app.use('/api/tenant/packages', require('./routes/tenantPackages'));
+app.use('/api/portal', require('./routes/portal'));
+
 
 // 5. Global error handler (must come AFTER all routes)
 app.use((err, req, res, next) => {

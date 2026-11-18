@@ -1,6 +1,7 @@
 
 import { useState } from 'react';
-import { Outlet, NavLink } from 'react-router-dom';
+import { Outlet, NavLink, useNavigate } from 'react-router-dom';
+import { api } from '../api/http.js';
 
 import {
   Wifi,
@@ -53,6 +54,15 @@ const navigation = [
 
 function TenantLayoutContent() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+    const navigate = useNavigate();
+  const [signingOut, setSigningOut] = useState(false);
+
+  async function handleSignOut() {
+    setSigningOut(true);
+    // The cookie is httpOnly, so only the server can clear it
+    await api('/api/tenant/logout', { method: 'POST' });
+    navigate('/tenant/login', { replace: true });
+  }
 
   return (
     <div className="flex min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)]">
@@ -128,15 +138,14 @@ function TenantLayoutContent() {
 
         {/* Sidebar bottom */}
         <div className="border-t border-[var(--border)] p-3">
-          <button
+                    <button
             type="button"
-            onClick={() => {
-              window.location.href = '/';
-            }}
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-muted)] hover:text-[var(--text-primary)]"
+            onClick={handleSignOut}
+            disabled={signingOut}
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-muted)] hover:text-[var(--text-primary)] disabled:opacity-50"
           >
             <LogOut size={18} />
-            Sign out
+            {signingOut ? 'Signing out...' : 'Sign out'}
           </button>
         </div>
       </aside>

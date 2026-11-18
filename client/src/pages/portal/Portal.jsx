@@ -1,4 +1,7 @@
+
 import { useEffect, useState } from 'react';
+import { useParams } from 'react-router-dom';
+
 import { PackageList } from '../../components/portal/PackageList';
 import { PhoneForm } from '../../components/portal/PhoneForm';
 import { ProcessingScreen } from '../../components/portal/ProcessingScreen';
@@ -6,56 +9,78 @@ import { ActiveScreen } from '../../components/portal/ActiveScreen';
 import { FailedScreen } from '../../components/portal/FailedScreen';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-const TOKEN_KEY = 'wifi_session_token';
 
-export default function App() {
+function PortalInner({ slug }) {
+  const tokenKey = `wifi_session_token:${slug}`;
+
   const [screen, setScreen] = useState('packages');
   const [phone, setPhone] = useState('');
-  const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY));
+  const [token, setToken] = useState(() => localStorage.getItem(tokenKey));
   const [selectedPackage, setSelectedPackage] = useState(null);
   const [sessionInfo, setSessionInfo] = useState(null);
   const [failureReason, setFailureReason] = useState(null);
-  const [checkingSession, setCheckingSession] = useState(() => Boolean(localStorage.getItem(TOKEN_KEY)));
 
-  // Resume an active or pending session if the customer refreshes the portal
+  const [checkingSession, setCheckingSession] = useState(
+    () => Boolean(localStorage.getItem(tokenKey))
+  );
+
+  // Resume an active or pending session after refreshing the portal
   useEffect(() => {
-    const savedToken = localStorage.getItem(TOKEN_KEY);
-    if (!savedToken) return;
+    const savedToken = localStorage.getItem(tokenKey);
+
+    if (!savedToken) {
+      setCheckingSession(false);
+      return;
+    }
 
     let cancelled = false;
 
-    (async () => {
+    async function checkSession() {
       try {
         const res = await fetch(`${API_BASE}/api/sessions/status`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+          },
           body: JSON.stringify({ token: savedToken }),
           signal: AbortSignal.timeout(10000),
         });
+
         const data = await res.json();
+
         if (cancelled) return;
 
         if (data.status === 'active') {
+          setToken(savedToken);
           setSessionInfo({ expiresAt: data.expiresAt });
           setScreen('active');
-        } else if (data.status === 'pending' || data.status === 'paid' || data.status === 'processing') {
+        } else if (
+          data.status === 'pending' ||
+          data.status === 'paid' ||
+          data.status === 'processing' ||
+          data.status === 'activating'
+        ) {
           setToken(savedToken);
           setScreen('processing');
         } else {
-          localStorage.removeItem(TOKEN_KEY);
+          localStorage.removeItem(tokenKey);
           setToken(null);
         }
       } catch {
-        // Network error on startup — fall back cleanly to packages
+        // Keep the saved token. The customer can retry when connected.
       } finally {
-        if (!cancelled) setCheckingSession(false);
+        if (!cancelled) {
+          setCheckingSession(false);
+        }
       }
-    })();
+    }
+
+    checkSession();
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [tokenKey]);
 
   const handlePackageSelect = (pkg) => {
     setSelectedPackage(pkg);
@@ -65,9 +90,11 @@ export default function App() {
   const handlePurchaseSuccess = (phoneNumber, purchaseToken) => {
     setPhone(phoneNumber);
     setToken(purchaseToken);
+
     if (purchaseToken) {
-      localStorage.setItem(TOKEN_KEY, purchaseToken);
+      localStorage.setItem(tokenKey, purchaseToken);
     }
+
     setScreen('processing');
   };
 
@@ -83,21 +110,23 @@ export default function App() {
   };
 
   const handleFailed = (reason) => {
-    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(tokenKey);
     setToken(null);
-    setFailureReason(reason || 'We couldn\'t activate your session.');
+    setFailureReason(
+      reason || "We couldn't activate your session."
+    );
     setScreen('failed');
   };
 
   const handleRetry = () => {
-    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(tokenKey);
     setToken(null);
     setFailureReason(null);
     setScreen('phone');
   };
 
   const handleBackToPackages = () => {
-    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(tokenKey);
     setSelectedPackage(null);
     setToken(null);
     setFailureReason(null);
@@ -106,7 +135,7 @@ export default function App() {
 
   if (checkingSession) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center text-slate-600">
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-600">
         Checking session...
       </div>
     );
@@ -115,10 +144,15 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50">
       {screen === 'packages' && (
-        <PackageList onSelect={handlePackageSelect} />
+        <PackageList
+          slug={slug}
+          onSelect={handlePackageSelect}
+        />
       )}
+
       {screen === 'phone' && (
         <PhoneForm
+          slug={slug}
           packageId={selectedPackage?.id}
           selectedPackage={selectedPackage}
           onSuccess={handlePurchaseSuccess}
@@ -126,6 +160,7 @@ export default function App() {
           onBack={handleBackToPackages}
         />
       )}
+
       {screen === 'processing' && (
         <ProcessingScreen
           token={token}
@@ -134,6 +169,7 @@ export default function App() {
           onRetry={handleRetry}
         />
       )}
+
       {screen === 'active' && (
         <ActiveScreen
           sessionInfo={sessionInfo}
@@ -141,13 +177,28 @@ export default function App() {
           selectedPackage={selectedPackage}
         />
       )}
+
       {screen === 'failed' && (
-        <FailedScreen 
-          reason={failureReason} 
-          onRetry={handleRetry} 
-          onBackToPackages={handleBackToPackages} 
+        <FailedScreen
+          reason={failureReason}
+          onRetry={handleRetry}
+          onBackToPackages={handleBackToPackages}
         />
       )}
     </div>
   );
+}
+
+export default function Portal() {
+  const { portalSlug } = useParams();
+
+  if (!portalSlug) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6 text-center text-slate-600">
+        Please open the Wi-Fi link provided by your hotspot owner.
+      </div>
+    );
+  }
+
+  return <PortalInner key={portalSlug} slug={portalSlug} />;
 }
