@@ -9,7 +9,13 @@ import {
   XCircle,
   Download,
   Eye,
+  X,
+  Smartphone,
+  Package,
+  CalendarDays,
 } from 'lucide-react';
+
+import Select from '../../components/ui/Select';
 
 const initialTransactions = [
   {
@@ -74,6 +80,7 @@ export default function TenantTransactions() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [methodFilter, setMethodFilter] = useState('All');
+  const [selectedTransaction, setSelectedTransaction] = useState(null);
 
   const completedTransactions = transactions.filter(
     (transaction) => transaction.status === 'Completed'
@@ -93,10 +100,12 @@ export default function TenantTransactions() {
   ).length;
 
   const filteredTransactions = transactions.filter((transaction) => {
+    const query = search.toLowerCase().trim();
+
     const matchesSearch =
-      transaction.phone.includes(search) ||
-      transaction.receipt.toLowerCase().includes(search.toLowerCase()) ||
-      transaction.package.toLowerCase().includes(search.toLowerCase());
+      transaction.phone.includes(query) ||
+      transaction.receipt.toLowerCase().includes(query) ||
+      transaction.package.toLowerCase().includes(query);
 
     const matchesStatus =
       statusFilter === 'All' || transaction.status === statusFilter;
@@ -106,6 +115,39 @@ export default function TenantTransactions() {
 
     return matchesSearch && matchesStatus && matchesMethod;
   });
+
+  const downloadReceipt = (transaction) => {
+    const receiptContent = `
+PAYMENT RECEIPT
+------------------------------
+Receipt: ${transaction.receipt}
+Customer: ${transaction.phone}
+Package: ${transaction.package}
+Amount: KES ${transaction.amount.toLocaleString()}
+Payment Method: ${transaction.method}
+Date: ${transaction.date}
+Time: ${transaction.time}
+Status: ${transaction.status}
+------------------------------
+Thank you for your purchase.
+`;
+
+    const blob = new Blob([receiptContent], {
+      type: 'text/plain;charset=utf-8',
+    });
+
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+
+    link.href = url;
+    link.download = `receipt-${transaction.receipt}.txt`;
+
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="space-y-6">
@@ -167,34 +209,37 @@ export default function TenantTransactions() {
                 size={17}
                 className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]"
               />
+
               <input
                 type="text"
                 placeholder="Search transactions..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] py-2 pl-9 pr-3 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--primary)] sm:w-56"
+                className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] py-2 pl-9 pr-3 text-sm text-[var(--text-primary)] outline-none transition focus:border-[var(--primary)] sm:w-56"
               />
             </div>
 
-            <select
+            <Select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--primary)]"
-            >
-              <option value="All">All statuses</option>
-              <option value="Completed">Completed</option>
-              <option value="Pending">Pending</option>
-              <option value="Failed">Failed</option>
-            </select>
+              onChange={setStatusFilter}
+              width="w-full sm:w-40"
+              options={[
+                { label: 'All statuses', value: 'All' },
+                { label: 'Completed', value: 'Completed' },
+                { label: 'Pending', value: 'Pending' },
+                { label: 'Failed', value: 'Failed' },
+              ]}
+            />
 
-            <select
+            <Select
               value={methodFilter}
-              onChange={(e) => setMethodFilter(e.target.value)}
-              className="rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--primary)]"
-            >
-              <option value="All">All methods</option>
-              <option value="M-Pesa">M-Pesa</option>
-            </select>
+              onChange={setMethodFilter}
+              width="w-full sm:w-40"
+              options={[
+                { label: 'All methods', value: 'All' },
+                { label: 'M-Pesa', value: 'M-Pesa' },
+              ]}
+            />
           </div>
         </div>
 
@@ -252,7 +297,9 @@ export default function TenantTransactions() {
 
                   <td className="px-5 py-4">
                     <button
+                      type="button"
                       title="View transaction details"
+                      onClick={() => setSelectedTransaction(transaction)}
                       className="rounded-md p-2 text-[var(--text-secondary)] transition hover:bg-[var(--primary-soft)] hover:text-[var(--primary)]"
                     >
                       <Eye size={17} />
@@ -281,6 +328,95 @@ export default function TenantTransactions() {
           </p>
         </div>
       </div>
+
+      {/* Transaction details modal */}
+      {selectedTransaction && (
+        <Modal onClose={() => setSelectedTransaction(null)}>
+          <div className="flex items-start justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-[var(--text-primary)]">
+                Transaction Details
+              </h2>
+              <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                Payment information and receipt details.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setSelectedTransaction(null)}
+              className="rounded-lg p-2 text-[var(--text-secondary)] transition hover:bg-[var(--bg-muted)]"
+            >
+              <X size={19} />
+            </button>
+          </div>
+
+          <div className="mt-6 rounded-xl bg-[var(--bg-muted)] p-4">
+            <p className="text-sm text-[var(--text-secondary)]">
+              Transaction amount
+            </p>
+
+            <p className="mt-1 text-2xl font-semibold text-[var(--text-primary)]">
+              KES {selectedTransaction.amount.toLocaleString()}
+            </p>
+
+            <div className="mt-3">
+              <StatusBadge status={selectedTransaction.status} />
+            </div>
+          </div>
+
+          <div className="mt-5 space-y-4">
+            <DetailRow
+              icon={ReceiptText}
+              label="Receipt number"
+              value={selectedTransaction.receipt}
+            />
+
+            <DetailRow
+              icon={Smartphone}
+              label="Customer phone"
+              value={selectedTransaction.phone}
+            />
+
+            <DetailRow
+              icon={Package}
+              label="Package"
+              value={selectedTransaction.package}
+            />
+
+            <DetailRow
+              icon={Wallet}
+              label="Payment method"
+              value={selectedTransaction.method}
+            />
+
+            <DetailRow
+              icon={CalendarDays}
+              label="Date and time"
+              value={`${selectedTransaction.date}, ${selectedTransaction.time}`}
+            />
+          </div>
+
+          <div className="mt-6 flex flex-col-reverse gap-3 border-t border-[var(--border)] pt-5 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={() => setSelectedTransaction(null)}
+              className="rounded-lg border border-[var(--border)] px-4 py-2.5 text-sm font-medium text-[var(--text-secondary)] transition hover:bg-[var(--bg-muted)]"
+            >
+              Close
+            </button>
+
+            <button
+              type="button"
+              onClick={() => downloadReceipt(selectedTransaction)}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-[var(--primary)] px-4 py-2.5 text-sm font-medium text-white transition hover:opacity-90"
+            >
+              <Download size={16} />
+              Download Receipt
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -297,6 +433,7 @@ function SummaryCard({ label, value, icon: Icon, color = 'primary' }) {
     <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-5">
       <div className="flex items-center justify-between">
         <p className="text-sm text-[var(--text-secondary)]">{label}</p>
+
         <div className={`rounded-lg p-2 ${colors[color]}`}>
           <Icon size={18} />
         </div>
@@ -326,10 +463,42 @@ function StatusBadge({ status }) {
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${styles[status]}`}
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${styles[status] || ''}`}
     >
-      <Icon size={13} />
+      {Icon && <Icon size={13} />}
       {status}
     </span>
+  );
+}
+
+function DetailRow({ icon: Icon, label, value }) {
+  return (
+    <div className="flex items-center gap-3">
+      <div className="rounded-lg bg-[var(--bg-muted)] p-2">
+        <Icon size={17} className="text-[var(--text-secondary)]" />
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <p className="text-xs text-[var(--text-muted)]">{label}</p>
+        <p className="mt-0.5 break-words text-sm font-medium text-[var(--text-primary)]">
+          {value}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function Modal({ children, onClose }) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-5 shadow-xl">
+        {children}
+      </div>
+    </div>
   );
 }

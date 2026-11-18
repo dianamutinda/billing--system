@@ -10,7 +10,12 @@ import {
   XCircle,
   Timer,
   MoreVertical,
+  X,
+  Power,
 } from 'lucide-react';
+
+import Select from '../../components/ui/Select';
+import DropdownMenu from '../../components/ui/DropdownMenu';
 
 const initialSessions = [
   {
@@ -66,9 +71,10 @@ const initialSessions = [
 ];
 
 export default function TenantSessions() {
-  const [sessions] = useState(initialSessions);
+  const [sessions, setSessions] = useState(initialSessions);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
+  const [selectedSession, setSelectedSession] = useState(null);
 
   const activeCount = sessions.filter(
     (session) => session.status === 'Active'
@@ -83,16 +89,31 @@ export default function TenantSessions() {
   ).length;
 
   const filteredSessions = sessions.filter((session) => {
+    const query = search.toLowerCase();
+
     const matchesSearch =
       session.phone.includes(search) ||
-      session.package.toLowerCase().includes(search.toLowerCase()) ||
-      session.ip.includes(search);
+      session.package.toLowerCase().includes(query) ||
+      session.ip.includes(search) ||
+      session.mac.toLowerCase().includes(query);
 
     const matchesStatus =
       statusFilter === 'All' || session.status === statusFilter;
 
     return matchesSearch && matchesStatus;
   });
+
+  function disconnectSession(sessionId) {
+    setSessions((current) =>
+      current.map((session) =>
+        session.id === sessionId
+          ? { ...session, status: 'Disconnected' }
+          : session
+      )
+    );
+
+    setSelectedSession(null);
+  }
 
   return (
     <div className="space-y-6">
@@ -101,6 +122,7 @@ export default function TenantSessions() {
         <h1 className="text-2xl font-semibold text-[var(--text-primary)]">
           Sessions
         </h1>
+
         <p className="mt-1 text-sm text-[var(--text-secondary)]">
           Monitor customer connections and manage active internet sessions.
         </p>
@@ -143,36 +165,41 @@ export default function TenantSessions() {
             <h2 className="font-semibold text-[var(--text-primary)]">
               All Sessions
             </h2>
+
             <p className="mt-1 text-sm text-[var(--text-secondary)]">
               View customer connection details and session status.
             </p>
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row">
+            {/* Search */}
             <div className="relative">
               <Search
                 size={17}
                 className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]"
               />
+
               <input
                 type="text"
                 placeholder="Search phone, package, IP..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] py-2 pl-9 pr-3 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--primary)] sm:w-64"
+                className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] py-2.5 pl-9 pr-3 text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--primary)] sm:w-64"
               />
             </div>
 
-            <select
+            {/* Status filter */}
+            <Select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--primary)]"
-            >
-              <option value="All">All statuses</option>
-              <option value="Active">Active</option>
-              <option value="Expired">Expired</option>
-              <option value="Disconnected">Disconnected</option>
-            </select>
+              onChange={setStatusFilter}
+              width="w-full sm:w-40"
+              options={[
+                { label: 'All statuses', value: 'All' },
+                { label: 'Active', value: 'Active' },
+                { label: 'Expired', value: 'Expired' },
+                { label: 'Disconnected', value: 'Disconnected' },
+              ]}
+            />
           </div>
         </div>
 
@@ -198,6 +225,7 @@ export default function TenantSessions() {
                 >
                   <td className="px-5 py-4">
                     <p className="font-medium">{session.phone}</p>
+
                     <p className="mt-1 text-xs text-[var(--text-muted)]">
                       {session.mac}
                     </p>
@@ -224,12 +252,32 @@ export default function TenantSessions() {
                   </td>
 
                   <td className="px-5 py-4">
-                    <button
-                      title="More session actions"
-                      className="rounded-md p-2 text-[var(--text-secondary)] transition hover:bg-[var(--primary-soft)] hover:text-[var(--primary)]"
-                    >
-                      <MoreVertical size={17} />
-                    </button>
+                    <DropdownMenu
+                      align="right"
+                      trigger={
+                        <button
+                          type="button"
+                          aria-label={`Actions for ${session.phone}`}
+                          className="rounded-md p-2 text-[var(--text-secondary)] transition hover:bg-[var(--primary-soft)] hover:text-[var(--primary)]"
+                        >
+                          <MoreVertical size={17} />
+                        </button>
+                      }
+                      items={[
+                        {
+                          label: 'View details',
+                          icon: Users,
+                          onClick: () => setSelectedSession(session),
+                        },
+                        {
+                          label: 'Disconnect session',
+                          icon: Power,
+                          danger: true,
+                          disabled: session.status !== 'Active',
+                          onClick: () => disconnectSession(session.id),
+                        },
+                      ]}
+                    />
                   </td>
                 </tr>
               ))}
@@ -254,6 +302,90 @@ export default function TenantSessions() {
           </p>
         </div>
       </div>
+
+      {/* Session details modal */}
+      {selectedSession && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setSelectedSession(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="session-modal-title"
+            className="w-full max-w-lg rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-5 shadow-xl sm:p-6"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2
+                  id="session-modal-title"
+                  className="text-lg font-semibold text-[var(--text-primary)]"
+                >
+                  Session details
+                </h2>
+
+                <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                  Customer connection information
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setSelectedSession(null)}
+                className="rounded-lg p-2 text-[var(--text-secondary)] hover:bg-[var(--bg-muted)]"
+                aria-label="Close details"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-4">
+              <DetailRow label="Customer phone" value={selectedSession.phone} />
+              <DetailRow label="Package" value={selectedSession.package} />
+              <DetailRow label="IP address" value={selectedSession.ip} />
+              <DetailRow label="MAC address" value={selectedSession.mac} />
+              <DetailRow label="Started" value={selectedSession.started} />
+              <DetailRow label="Expires" value={selectedSession.expires} />
+
+              <div className="flex items-center justify-between border-t border-[var(--border)] pt-4">
+                <span className="text-sm text-[var(--text-secondary)]">
+                  Session status
+                </span>
+
+                <StatusBadge status={selectedSession.status} />
+              </div>
+            </div>
+
+            {selectedSession.status === 'Active' && (
+              <div className="mt-6 border-t border-[var(--border)] pt-5">
+                <button
+                  type="button"
+                  onClick={() => disconnectSession(selectedSession.id)}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--danger)] px-4 py-2.5 text-sm font-medium text-[var(--danger)] transition-colors hover:bg-[var(--danger)]/10"
+                >
+                  <Power size={16} />
+                  Disconnect session
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DetailRow({ label, value }) {
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <span className="text-sm text-[var(--text-secondary)]">
+        {label}
+      </span>
+
+      <span className="break-all text-right text-sm font-medium text-[var(--text-primary)]">
+        {value}
+      </span>
     </div>
   );
 }
@@ -270,6 +402,7 @@ function SummaryCard({ label, value, icon: Icon, color = 'primary' }) {
     <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-5">
       <div className="flex items-center justify-between">
         <p className="text-sm text-[var(--text-secondary)]">{label}</p>
+
         <div className={`rounded-lg p-2 ${colors[color]}`}>
           <Icon size={18} />
         </div>
@@ -300,6 +433,7 @@ function StatusBadge({ status }) {
       ) : (
         <XCircle size={13} />
       )}
+
       {status}
     </span>
   );

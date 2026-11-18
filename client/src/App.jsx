@@ -15,7 +15,9 @@ import TenantBusiness from './pages/tenant/Business';
 
 import AdminDashboard from './pages/admin/Dashboard';
 import AdminTenants from './pages/admin/Tenants';
+import AddTenant from './pages/admin/AddTenant';
 import AdminSubscriptions from './pages/admin/Subscriptions';
+import CreatePlan from './pages/admin/CreatePlan';
 
 export default function App() {
   return (
@@ -41,7 +43,9 @@ export default function App() {
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<AdminDashboard />} />
           <Route path="tenants" element={<AdminTenants />} />
+          <Route path="tenants/new" element={<AddTenant />} />
           <Route path="subscriptions" element={<AdminSubscriptions />} />
+          <Route path="plans/new" element={<CreatePlan />} />
         </Route>
 
         {/* Unknown routes */}

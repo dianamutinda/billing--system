@@ -1,21 +1,22 @@
 
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 
 import {
   Building2,
-  Users,
   CheckCircle2,
   Clock3,
   Ban,
   Search,
   Plus,
-  MoreHorizontal,
   Wifi,
   WifiOff,
   Eye,
-  Pencil,
-  ShieldCheck,
 } from 'lucide-react';
+
+import DropdownMenu from '../../components/ui/DropdownMenu';
+import Select from '../../components/ui/Select';
+
 
 const initialTenants = [
   {
@@ -162,7 +163,6 @@ export default function AdminTenants() {
   const [statusFilter, setStatusFilter] = useState('All');
   const [planFilter, setPlanFilter] = useState('All');
   const [selectedTenant, setSelectedTenant] = useState(null);
-  const [openMenu, setOpenMenu] = useState(null);
 
   const activeCount = tenants.filter(
     (tenant) => tenant.status === 'Active'
@@ -202,8 +202,6 @@ export default function AdminTenants() {
       )
     );
 
-    setOpenMenu(null);
-
     setSelectedTenant((current) =>
       current?.id === id
         ? { ...current, status: newStatus }
@@ -226,13 +224,13 @@ export default function AdminTenants() {
           </p>
         </div>
 
-        <button
-          type="button"
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-[var(--primary)] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[var(--primary-hover)]"
-        >
-          <Plus size={17} />
-          Add Tenant
-        </button>
+        <Link
+  to="/admin/tenants/new"
+  className="inline-flex items-center gap-2 rounded-lg bg-[var(--primary)] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[var(--primary-hover)]"
+>
+  <Plus size={16} />
+  Add tenant
+</Link>
       </div>
 
       {/* Summary cards */}
@@ -297,27 +295,29 @@ export default function AdminTenants() {
               />
             </div>
 
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2.5 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--primary)]"
-            >
-              <option value="All">All statuses</option>
-              <option value="Active">Active</option>
-              <option value="Pending">Pending</option>
-              <option value="Suspended">Suspended</option>
-            </select>
+            <Select
+  value={statusFilter}
+  onChange={setStatusFilter}
+  width="w-full sm:w-40"
+  options={[
+    { label: 'All statuses', value: 'All' },
+    { label: 'Active', value: 'Active' },
+    { label: 'Pending', value: 'Pending' },
+    { label: 'Suspended', value: 'Suspended' },
+  ]}
+/>
 
-            <select
-              value={planFilter}
-              onChange={(e) => setPlanFilter(e.target.value)}
-              className="rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2.5 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--primary)]"
-            >
-              <option value="All">All plans</option>
-              <option value="Starter">Starter</option>
-              <option value="Professional">Professional</option>
-              <option value="Business">Business</option>
-            </select>
+            <Select
+  value={planFilter}
+  onChange={setPlanFilter}
+  width="w-full sm:w-40"
+  options={[
+    { label: 'All plans', value: 'All' },
+    { label: 'Starter', value: 'Starter' },
+    { label: 'Professional', value: 'Professional' },
+    { label: 'Business', value: 'Business' },
+  ]}
+/>
           </div>
         </div>
 
@@ -372,62 +372,38 @@ export default function AdminTenants() {
                     <StatusBadge status={tenant.status} />
                   </td>
 
-                  <td className="relative px-5 py-4">
-                    <button
-                      type="button"
-                      aria-label={`Actions for ${tenant.name}`}
-                      aria-expanded={openMenu === tenant.id}
-                      onClick={() =>
-                        setOpenMenu(
-                          openMenu === tenant.id ? null : tenant.id
-                        )
-                      }
-                      className="rounded-lg p-2 text-[var(--text-secondary)] hover:bg-[var(--bg-muted)]"
-                    >
-                      <MoreHorizontal size={18} />
-                    </button>
-
-                    {openMenu === tenant.id && (
-                      <div className="absolute right-5 top-12 z-20 w-48 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-1 shadow-lg">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedTenant(tenant);
-                            setOpenMenu(null);
-                          }}
-                          className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-muted)]"
-                        >
-                          <Eye size={16} />
-                          View details
-                        </button>
-
-                        {tenant.status !== 'Active' && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              updateTenantStatus(tenant.id, 'Active')
-                            }
-                            className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-[var(--success)] hover:bg-[var(--bg-muted)]"
-                          >
-                            <CheckCircle2 size={16} />
-                            Activate account
-                          </button>
-                        )}
-
-                        {tenant.status === 'Active' && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              updateTenantStatus(tenant.id, 'Suspended')
-                            }
-                            className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-[var(--danger)] hover:bg-[var(--bg-muted)]"
-                          >
-                            <Ban size={16} />
-                            Suspend account
-                          </button>
-                        )}
-                      </div>
-                    )}
+                  {/* Reusable dropdown */}
+                  <td className="px-5 py-4">
+                    <DropdownMenu
+                      items={[
+                        {
+                          label: 'View details',
+                          icon: Eye,
+                          onClick: () => setSelectedTenant(tenant),
+                        },
+                        ...(tenant.status !== 'Active'
+                          ? [
+                              {
+                                label: 'Activate account',
+                                icon: CheckCircle2,
+                                onClick: () =>
+                                  updateTenantStatus(tenant.id, 'Active'),
+                              },
+                            ]
+                          : [
+                              {
+                                label: 'Suspend account',
+                                icon: Ban,
+                                danger: true,
+                                onClick: () =>
+                                  updateTenantStatus(
+                                    tenant.id,
+                                    'Suspended'
+                                  ),
+                              },
+                            ]),
+                      ]}
+                    />
                   </td>
                 </tr>
               ))}
