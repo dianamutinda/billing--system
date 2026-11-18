@@ -25,6 +25,14 @@ const emailLimiter = rateLimit({
   keyGenerator: (req) => 'email:' + String(req.body?.email || '').trim().toLowerCase(),
 });
 
+// Keyed by tenant id (set by requireTenant), so guesses can't be spread across IPs
+const changePasswordLimiter = rateLimit({
+  ...common,
+  max: 5,
+  keyGenerator: (req) => 'chpw:' + req.tenantId,
+  message: { error: 'Too many attempts. Try again later.' },
+});
+
 router.post('/login', ipLimiter, emailLimiter, async (req, res) => {
   try {
     const email = String(req.body.email || '').trim().toLowerCase();
@@ -69,8 +77,59 @@ router.post('/logout', (req, res) => {
   res.json({ ok: true });
 });
 
-router.get('/me', requireTenant, (req, res) => {
-  res.json({ ok: true, tenantId: req.tenantId });
+router.get('/me', requireTenant, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT business_name, must_change_password FROM tenants WHERE id = $1',
+      [req.tenantId]
+    );
+    if (!rows[0]) return res.status(401).json({ error: 'Unauthorized' });
+    res.json({
+      ok: true,
+      tenantId: req.tenantId,
+      businessName: rows[0].business_name,
+      mustChangePassword: rows[0].must_change_password,
+    });
+  } catch (err) {
+    console.error('tenant me failed:', err);
+    res.status(500).json({ error: 'Something went wrong' });
+  }
+});
+
+router.post('/change-password', requireTenant, changePasswordLimiter, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body || {};
+
+    if (typeof currentPassword !== 'string' || typeof newPassword !== 'string') {
+      return res.status(400).json({ error: 'Invalid request' });
+    }
+    // bcrypt only reads the first 72 bytes, so cap the length to avoid silent truncation
+    if (newPassword.length < 10 || Buffer.byteLength(newPassword) > 72) {
+      return res.status(400).json({ error: 'Password must be 10 to 72 characters' });
+    }
+    if (newPassword === currentPassword) {
+      return res.status(400).json({ error: 'New password must be different' });
+    }
+
+    const { rows } = await Pool.query(
+      'SELECT password_hash FROM tenants WHERE id = $1',
+      [req.tenantId]
+    );
+    if (!rows[0] || !(await bcrypt.compare(currentPassword, rows[0].password_hash))) {
+      return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+
+    const newHash = await bcrypt.hash(newPassword, 12);
+    await Pool.query(
+      'UPDATE tenants SET password_hash = $1, must_change_password = false WHERE id = $2',
+      [newHash, req.tenantId]
+    );
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('change-password failed:', err);
+    res.status(500).json({ error: 'Something went wrong' });
+  }
 });
 
 module.exports = router;

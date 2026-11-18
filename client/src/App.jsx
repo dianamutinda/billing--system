@@ -45,7 +45,7 @@ export default function App() {
           <Route path="tenants" element={<AdminTenants />} />
           <Route path="tenants/new" element={<AddTenant />} />
           <Route path="subscriptions" element={<AdminSubscriptions />} />
-          <Route path="plans/new" element={<CreatePlan />} />
+          <Route path="subscriptions/plans/new" element={<CreatePlan />} />
         </Route>
 
         {/* Unknown routes */}

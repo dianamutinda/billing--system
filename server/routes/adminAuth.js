@@ -62,4 +62,9 @@ router.post('/login', loginLimiter, async (req, res) => {
 router.get('/me', requireAdmin, (req, res) => {
   res.json({ ok: true, adminId: req.adminId });
 });
+
+router.post('/logout', (req, res) => {
+  res.clearCookie('admin_token', { httpOnly: true, sameSite: 'strict' });
+  res.json({ ok: true });
+});
 module.exports = router;

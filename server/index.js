@@ -95,6 +95,8 @@ const purchasePerIp = rateLimit({
 app.use('/api/', apiLimiter);
 app.use('/api/sessions/status', statusIpLimiter, statusLimiter);
 app.use('/api/purchase', purchasePerIp, purchasePerPhone);
+app.use('/api/tenant/router', require('./routes/tenantRouter'));
+app.use('/api/admin/sessions', require('./routes/adminSessions'));
 
 // 3. Health & admin routes
 app.get('/', (req, res) => {
