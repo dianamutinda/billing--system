@@ -1,5 +1,4 @@
-
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Smartphone,
   ShieldCheck,
@@ -8,33 +7,77 @@ import {
   CreditCard,
   Info,
 } from 'lucide-react';
+import { getPaymentSettings, savePaymentSettings } from '../../api/paymentSettings.js';
 
 export default function TenantPayment() {
   const [settings, setSettings] = useState({
-    paybill: '',
-    accountNumber: '',
+    shortcode: '',
     consumerKey: '',
     consumerSecret: '',
     passkey: '',
-    environment: 'sandbox',
+    env: 'sandbox',
   });
-
+  // The server never returns the secrets, only whether they are set
+  const [has, setHas] = useState({ consumerSecret: false, passkey: false });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
 
-  const updateSetting = (field, value) => {
-    setSettings((current) => ({
-      ...current,
-      [field]: value,
-    }));
+  useEffect(() => {
+    (async () => {
+      const r = await getPaymentSettings();
+      if (r.ok) {
+        setSettings((s) => ({
+          ...s,
+          shortcode: r.data.shortcode || '',
+          consumerKey: r.data.consumerKey || '',
+          env: r.data.env,
+        }));
+        setHas({
+          consumerSecret: r.data.hasConsumerSecret,
+          passkey: r.data.hasPasskey,
+        });
+      } else {
+        setError(r.data?.error || 'Could not load settings.');
+      }
+      setLoading(false);
+    })();
+  }, []);
 
+  const updateSetting = (field, value) => {
+    setSettings((current) => ({ ...current, [field]: value }));
     setSaved(false);
   };
 
-  const handleSave = (e) => {
+  const handleSave = async (e) => {
     e.preventDefault();
+    setError('');
+    setSaving(true);
 
-    // Temporary frontend demonstration.
-    // Actual credentials must be saved securely through the backend.
+    const body = {
+      shortcode: settings.shortcode,
+      consumerKey: settings.consumerKey,
+      env: settings.env,
+    };
+    // Leave a secret out to keep the stored one
+    if (settings.consumerSecret) body.consumerSecret = settings.consumerSecret;
+    if (settings.passkey) body.passkey = settings.passkey;
+
+    const r = await savePaymentSettings(body);
+    setSaving(false);
+
+    if (!r.ok) {
+      setError(r.data?.error || 'Could not save settings.');
+      return;
+    }
+
+    setHas((h) => ({
+      consumerSecret: h.consumerSecret || !!settings.consumerSecret,
+      passkey: h.passkey || !!settings.passkey,
+    }));
+    // Clear the typed secrets so they don't sit in the page
+    setSettings((s) => ({ ...s, consumerSecret: '', passkey: '' }));
     setSaved(true);
   };
 
@@ -101,16 +144,9 @@ export default function TenantPayment() {
           <div className="mt-6 grid gap-5 sm:grid-cols-2">
             <FormField
               label="Paybill / Till Number"
-              value={settings.paybill}
-              onChange={(value) => updateSetting('paybill', value)}
-              placeholder="Enter business number"
-            />
-
-            <FormField
-              label="Account Number"
-              value={settings.accountNumber}
-              onChange={(value) => updateSetting('accountNumber', value)}
-              placeholder="Enter account number"
+              value={settings.shortcode}
+              onChange={(value) => updateSetting('shortcode', value)}
+              placeholder="e.g. 174379"
             />
           </div>
         </section>
@@ -145,7 +181,11 @@ export default function TenantPayment() {
               label="Consumer Secret"
               value={settings.consumerSecret}
               onChange={(value) => updateSetting('consumerSecret', value)}
-              placeholder="Enter consumer secret"
+              placeholder={
+                has.consumerSecret
+                  ? 'Saved. Leave blank to keep it'
+                  : 'Enter consumer secret'
+              }
               type="password"
             />
 
@@ -153,7 +193,9 @@ export default function TenantPayment() {
               label="Lipa Na M-Pesa Passkey"
               value={settings.passkey}
               onChange={(value) => updateSetting('passkey', value)}
-              placeholder="Enter passkey"
+              placeholder={
+                has.passkey ? 'Saved. Leave blank to keep it' : 'Enter passkey'
+              }
               type="password"
             />
           </div>
@@ -189,7 +231,7 @@ export default function TenantPayment() {
                 description: 'Test payment requests without processing live payments.',
               },
               {
-                value: 'production',
+                value: 'live',
                 title: 'Production',
                 description: 'Process real customer payments.',
               },
@@ -197,9 +239,9 @@ export default function TenantPayment() {
               <button
                 key={option.value}
                 type="button"
-                onClick={() => updateSetting('environment', option.value)}
+                onClick={() => updateSetting('env', option.value)}
                 className={`rounded-lg border p-4 text-left transition ${
-                  settings.environment === option.value
+                  settings.env === option.value
                     ? 'border-[var(--primary)] bg-[var(--primary-soft)]'
                     : 'border-[var(--border)] hover:bg-[var(--bg-muted)]'
                 }`}
@@ -209,7 +251,7 @@ export default function TenantPayment() {
                     {option.title}
                   </p>
 
-                  {settings.environment === option.value && (
+                  {settings.env === option.value && (
                     <CheckCircle2
                       size={18}
                       className="text-[var(--primary)]"
@@ -227,19 +269,21 @@ export default function TenantPayment() {
 
         {/* Save settings */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          {error && <p className="text-sm text-red-600">{error}</p>}
           {saved && (
             <p className="flex items-center gap-2 text-sm text-[var(--success)]">
               <CheckCircle2 size={17} />
-              Demo settings saved.
+              Settings saved.
             </p>
           )}
 
           <button
             type="submit"
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-[var(--primary)] px-5 py-2.5 text-sm font-medium text-white transition hover:opacity-90 sm:ml-auto"
+            disabled={saving || loading}
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-[var(--primary)] px-5 py-2.5 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50 sm:ml-auto"
           >
             <Save size={17} />
-            Save Settings
+            {saving ? 'Saving...' : 'Save Settings'}
           </button>
         </div>
       </form>

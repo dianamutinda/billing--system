@@ -103,29 +103,6 @@ app.get('/', (req, res) => {
   res.json({ status: 'server is running' });
 });
 
-function adminKeyValid(provided) {
-  const expected = process.env.ADMIN_KEY;
-  if (!expected) return false;
-  const a = Buffer.from(String(provided || ''));
-  const b = Buffer.from(expected);
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
-}
-
-// Temporary owner route. Replace with real owner login under /api/admin before launch.
-app.get('/test-sessions', async (req, res) => {
-  if (!adminKeyValid(req.headers['x-admin-key'])) {
-    return res.status(404).end();
-  }
-
-  try {
-    const sessions = await getAllSessionsForOwner();
-    res.json(sessions);
-  } catch (err) {
-    console.error('GET /test-sessions failed:', err);
-    res.status(500).json({ error: 'Something went wrong. Please try again.' });
-  }
-});
-
 // 4. API routes
 app.use('/api/packages', packageRoutes);
 app.use('/api/mpesa', mpesaRoutes);
@@ -136,6 +113,7 @@ app.use('/api/admin/tenants', requireAdmin, adminTenantsRoutes);
 app.use('/api/tenant', tenantAuthRoutes);
 app.use('/api/tenant/packages', require('./routes/tenantPackages'));
 app.use('/api/portal', require('./routes/portal'));
+app.use('/api/tenant/payment-settings', require('./routes/tenantPaymentSettings'));
 
 
 // 5. Global error handler (must come AFTER all routes)
