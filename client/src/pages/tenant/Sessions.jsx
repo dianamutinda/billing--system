@@ -1,5 +1,4 @@
-
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Search,
   Wifi,
@@ -16,65 +15,51 @@ import {
 
 import Select from '../../components/ui/Select';
 import DropdownMenu from '../../components/ui/DropdownMenu';
-
-const initialSessions = [
-  {
-    id: 1,
-    phone: '0712345678',
-    package: '1 Hour Package',
-    ip: '192.168.88.101',
-    mac: 'A4:5E:60:12:34:56',
-    started: '10:30 AM',
-    expires: '11:30 AM',
-    status: 'Active',
-  },
-  {
-    id: 2,
-    phone: '0723456789',
-    package: 'Daily Package',
-    ip: '192.168.88.102',
-    mac: 'B8:27:EB:45:67:89',
-    started: '09:15 AM',
-    expires: '09:15 AM tomorrow',
-    status: 'Active',
-  },
-  {
-    id: 3,
-    phone: '0709876543',
-    package: '1 Hour Package',
-    ip: '192.168.88.103',
-    mac: 'C0:25:E9:78:90:12',
-    started: '08:00 AM',
-    expires: '09:00 AM',
-    status: 'Expired',
-  },
-  {
-    id: 4,
-    phone: '0798765432',
-    package: 'Weekly Package',
-    ip: '192.168.88.104',
-    mac: 'D4:6A:6A:23:45:67',
-    started: 'Yesterday, 2:00 PM',
-    expires: 'Next week',
-    status: 'Active',
-  },
-  {
-    id: 5,
-    phone: '0756789012',
-    package: '1 Hour Package',
-    ip: '192.168.88.105',
-    mac: 'E8:9F:80:34:56:78',
-    started: '07:30 AM',
-    expires: '08:30 AM',
-    status: 'Disconnected',
-  },
-];
+import {
+  listSessions,
+  disconnectSession as disconnectSessionRequest,
+} from '../../api/sessions.js';
 
 export default function TenantSessions() {
-  const [sessions, setSessions] = useState(initialSessions);
+  const [sessions, setSessions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [selectedSession, setSelectedSession] = useState(null);
+
+  const load = async () => {
+    const r = await listSessions();
+    if (r.ok) {
+      setSessions(r.data);
+      setError('');
+    } else {
+      setError(r.data?.error || 'Could not load sessions.');
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function disconnectSession(session) {
+    if (
+      !window.confirm(
+        `Disconnect ${session.phone}? They will lose internet access immediately.`
+      )
+    ) {
+      return;
+    }
+    const r = await disconnectSessionRequest(session.id);
+    if (!r.ok) {
+      setError(r.data?.error || 'Could not disconnect session.');
+      return;
+    }
+    setError('');
+    setSelectedSession(null);
+    await load();
+  }
 
   const activeCount = sessions.filter(
     (session) => session.status === 'Active'
@@ -93,27 +78,13 @@ export default function TenantSessions() {
 
     const matchesSearch =
       session.phone.includes(search) ||
-      session.package.toLowerCase().includes(query) ||
-      session.ip.includes(search) ||
-      session.mac.toLowerCase().includes(query);
+      session.package.toLowerCase().includes(query);
 
     const matchesStatus =
       statusFilter === 'All' || session.status === statusFilter;
 
     return matchesSearch && matchesStatus;
   });
-
-  function disconnectSession(sessionId) {
-    setSessions((current) =>
-      current.map((session) =>
-        session.id === sessionId
-          ? { ...session, status: 'Disconnected' }
-          : session
-      )
-    );
-
-    setSelectedSession(null);
-  }
 
   return (
     <div className="space-y-6">
@@ -127,6 +98,13 @@ export default function TenantSessions() {
           Monitor customer connections and manage active internet sessions.
         </p>
       </div>
+
+      {loading && (
+        <p className="text-sm text-[var(--text-secondary)]">
+          Loading sessions...
+        </p>
+      )}
+      {error && <p className="text-sm text-red-600">{error}</p>}
 
       {/* Summary cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -181,7 +159,7 @@ export default function TenantSessions() {
 
               <input
                 type="text"
-                placeholder="Search phone, package, IP..."
+                placeholder="Search phone or package..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] py-2.5 pl-9 pr-3 text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--primary)] sm:w-64"
@@ -209,7 +187,6 @@ export default function TenantSessions() {
               <tr className="text-xs font-medium uppercase tracking-wide text-[var(--text-secondary)]">
                 <th className="px-5 py-3">Customer</th>
                 <th className="px-5 py-3">Package</th>
-                <th className="px-5 py-3">IP Address</th>
                 <th className="px-5 py-3">Started</th>
                 <th className="px-5 py-3">Expires</th>
                 <th className="px-5 py-3">Status</th>
@@ -225,18 +202,10 @@ export default function TenantSessions() {
                 >
                   <td className="px-5 py-4">
                     <p className="font-medium">{session.phone}</p>
-
-                    <p className="mt-1 text-xs text-[var(--text-muted)]">
-                      {session.mac}
-                    </p>
                   </td>
 
                   <td className="px-5 py-4">
                     {session.package}
-                  </td>
-
-                  <td className="px-5 py-4 font-mono text-xs text-[var(--text-secondary)]">
-                    {session.ip}
                   </td>
 
                   <td className="px-5 py-4 text-[var(--text-secondary)]">
@@ -274,7 +243,7 @@ export default function TenantSessions() {
                           icon: Power,
                           danger: true,
                           disabled: session.status !== 'Active',
-                          onClick: () => disconnectSession(session.id),
+                          onClick: () => disconnectSession(session),
                         },
                       ]}
                     />
@@ -285,7 +254,7 @@ export default function TenantSessions() {
               {filteredSessions.length === 0 && (
                 <tr>
                   <td
-                    colSpan="7"
+                    colSpan="6"
                     className="px-5 py-12 text-center text-sm text-[var(--text-secondary)]"
                   >
                     No sessions found.
@@ -343,10 +312,16 @@ export default function TenantSessions() {
             <div className="mt-5 space-y-4">
               <DetailRow label="Customer phone" value={selectedSession.phone} />
               <DetailRow label="Package" value={selectedSession.package} />
-              <DetailRow label="IP address" value={selectedSession.ip} />
-              <DetailRow label="MAC address" value={selectedSession.mac} />
               <DetailRow label="Started" value={selectedSession.started} />
               <DetailRow label="Expires" value={selectedSession.expires} />
+              <DetailRow
+                label="Router access"
+                value={
+                  selectedSession.networkActivated
+                    ? 'Activated'
+                    : 'Not activated'
+                }
+              />
 
               <div className="flex items-center justify-between border-t border-[var(--border)] pt-4">
                 <span className="text-sm text-[var(--text-secondary)]">
@@ -361,7 +336,7 @@ export default function TenantSessions() {
               <div className="mt-6 border-t border-[var(--border)] pt-5">
                 <button
                   type="button"
-                  onClick={() => disconnectSession(selectedSession.id)}
+                  onClick={() => disconnectSession(selectedSession)}
                   className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--danger)] px-4 py-2.5 text-sm font-medium text-[var(--danger)] transition-colors hover:bg-[var(--danger)]/10"
                 >
                   <Power size={16} />

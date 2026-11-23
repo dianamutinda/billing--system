@@ -114,6 +114,8 @@ app.use('/api/tenant', tenantAuthRoutes);
 app.use('/api/tenant/packages', require('./routes/tenantPackages'));
 app.use('/api/portal', require('./routes/portal'));
 app.use('/api/tenant/payment-settings', require('./routes/tenantPaymentSettings'));
+app.use('/api/tenant/transactions', require('./routes/tenantTransactions'));
+app.use('/api/tenant/sessions', require('./routes/tenantSessions'));
 
 
 // 5. Global error handler (must come AFTER all routes)

@@ -1,5 +1,4 @@
-
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Search,
   ReceiptText,
@@ -7,6 +6,7 @@ import {
   CheckCircle2,
   Clock,
   XCircle,
+  AlertTriangle,
   Download,
   Eye,
   X,
@@ -16,71 +16,25 @@ import {
 } from 'lucide-react';
 
 import Select from '../../components/ui/Select';
-
-const initialTransactions = [
-  {
-    id: 1,
-    receipt: 'RKL7A2B9C1',
-    phone: '0712345678',
-    package: '1 Hour Package',
-    amount: 20,
-    method: 'M-Pesa',
-    date: '17 Nov 2026',
-    time: '10:30 AM',
-    status: 'Completed',
-  },
-  {
-    id: 2,
-    receipt: 'RKL7A2B9C2',
-    phone: '0723456789',
-    package: 'Daily Package',
-    amount: 100,
-    method: 'M-Pesa',
-    date: '17 Nov 2026',
-    time: '10:15 AM',
-    status: 'Completed',
-  },
-  {
-    id: 3,
-    receipt: 'RKL7A2B9C3',
-    phone: '0709876543',
-    package: 'Weekly Package',
-    amount: 350,
-    method: 'M-Pesa',
-    date: '17 Nov 2026',
-    time: '09:45 AM',
-    status: 'Pending',
-  },
-  {
-    id: 4,
-    receipt: 'RKL7A2B9C4',
-    phone: '0798765432',
-    package: '1 Hour Package',
-    amount: 20,
-    method: 'M-Pesa',
-    date: '17 Nov 2026',
-    time: '09:20 AM',
-    status: 'Failed',
-  },
-  {
-    id: 5,
-    receipt: 'RKL7A2B9C5',
-    phone: '0756789012',
-    package: 'Monthly Package',
-    amount: 1000,
-    method: 'M-Pesa',
-    date: '16 Nov 2026',
-    time: '04:30 PM',
-    status: 'Completed',
-  },
-];
+import { listTransactions } from '../../api/transactions.js';
 
 export default function TenantTransactions() {
-  const [transactions] = useState(initialTransactions);
+  const [transactions, setTransactions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [methodFilter, setMethodFilter] = useState('All');
   const [selectedTransaction, setSelectedTransaction] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      const r = await listTransactions();
+      if (r.ok) setTransactions(r.data);
+      else setError(r.data?.error || 'Could not load transactions.');
+      setLoading(false);
+    })();
+  }, []);
 
   const completedTransactions = transactions.filter(
     (transaction) => transaction.status === 'Completed'
@@ -191,6 +145,13 @@ Thank you for your purchase.
         />
       </div>
 
+      {loading && (
+        <p className="text-sm text-[var(--text-secondary)]">
+          Loading transactions...
+        </p>
+      )}
+      {error && <p className="text-sm text-red-600">{error}</p>}
+
       {/* Transactions table */}
       <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-surface)]">
         <div className="flex flex-col gap-4 border-b border-[var(--border)] p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -228,6 +189,7 @@ Thank you for your purchase.
                 { label: 'Completed', value: 'Completed' },
                 { label: 'Pending', value: 'Pending' },
                 { label: 'Failed', value: 'Failed' },
+                { label: 'Review', value: 'Review' },
               ]}
             />
 
@@ -395,6 +357,14 @@ Thank you for your purchase.
               label="Date and time"
               value={`${selectedTransaction.date}, ${selectedTransaction.time}`}
             />
+
+            {selectedTransaction.note && (
+              <DetailRow
+                icon={AlertTriangle}
+                label="Status note"
+                value={selectedTransaction.note}
+              />
+            )}
           </div>
 
           <div className="mt-6 flex flex-col-reverse gap-3 border-t border-[var(--border)] pt-5 sm:flex-row sm:justify-end">
@@ -451,12 +421,14 @@ function StatusBadge({ status }) {
     Completed: 'bg-[var(--success)]/10 text-[var(--success)]',
     Pending: 'bg-[var(--warning)]/10 text-[var(--warning)]',
     Failed: 'bg-[var(--danger)]/10 text-[var(--danger)]',
+    Review: 'bg-[var(--warning)]/10 text-[var(--warning)]',
   };
 
   const icons = {
     Completed: CheckCircle2,
     Pending: Clock,
     Failed: XCircle,
+    Review: AlertTriangle,
   };
 
   const Icon = icons[status];
