@@ -1,5 +1,4 @@
-
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Building2,
   MapPin,
@@ -7,39 +6,90 @@ import {
   Mail,
   Globe,
   Save,
+  Copy,
   CheckCircle2,
   Wifi,
   Info,
 } from 'lucide-react';
+import { getBusiness, saveBusiness } from '../../api/business.js';
 
 export default function TenantBusiness() {
-  const [business, setBusiness] = useState({
-    name: "Joe's Wi-Fi",
-    slug: 'joes-wifi',
-    phone: '0712345678',
-    email: 'hello@joeswifi.co.ke',
-    location: 'Westlands, Nairobi',
-    description: 'Affordable and reliable internet access.',
-    portalMessage: 'Welcome! Choose a package and get connected.',
-  });
-
+  const [business, setBusiness] = useState(null);
+  const [loadError, setLoadError] = useState('');
+  const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      const r = await getBusiness();
+      if (cancelled) return;
+      if (r.ok) setBusiness(r.data);
+      else setLoadError(r.error || 'Could not load your business settings');
+    }
+
+    load();
+    return () => { cancelled = true; };
+  }, []);
 
   const updateField = (field, value) => {
-    setBusiness((current) => ({
-      ...current,
-      [field]: value,
-    }));
+    setBusiness((current) => ({ ...current, [field]: value }));
     setSaved(false);
+    setSaveError('');
   };
 
-  const handleSave = (e) => {
+  const handleSave = async (e) => {
     e.preventDefault();
+    setSaving(true);
+    setSaved(false);
+    setSaveError('');
 
-    // Temporary UI demonstration.
-    // Connect to the tenant business settings API later.
-    setSaved(true);
+    const r = await saveBusiness({
+      businessName: business.businessName,
+      phone: business.phone,
+      location: business.location,
+      description: business.description,
+      portalMessage: business.portalMessage,
+    });
+
+    setSaving(false);
+    if (r.ok) setSaved(true);
+    else setSaveError(r.error || 'Could not save your changes');
   };
+
+  // The real customer portal address, built from wherever the app is running
+  const portalUrl = business
+    ? `${window.location.origin}/p/${business.portalSlug}`
+    : '';
+
+  const copyPortalUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(portalUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard can be blocked; the link is still visible to copy by hand
+    }
+  };
+
+  if (loadError) {
+    return (
+      <p className="mx-auto max-w-5xl rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-4 text-sm text-[var(--text-secondary)]">
+        {loadError}
+      </p>
+    );
+  }
+
+  if (!business) {
+    return (
+      <p className="mx-auto max-w-5xl text-sm text-[var(--text-secondary)]">
+        Loading…
+      </p>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -74,17 +124,18 @@ export default function TenantBusiness() {
           <div className="mt-6 grid gap-5 sm:grid-cols-2">
             <FormField
               label="Business Name"
-              value={business.name}
-              onChange={(value) => updateField('name', value)}
+              value={business.businessName}
+              onChange={(value) => updateField('businessName', value)}
               placeholder="Enter business name"
             />
 
             <FormField
-              label="Portal URL Slug"
-              value={business.slug}
-              onChange={(value) => updateField('slug', value)}
-              placeholder="your-business"
-              hint="Used to identify your customer portal."
+              label="Login Email"
+              value={business.email}
+              type="email"
+              icon={Mail}
+              disabled
+              hint="This is your sign-in email and can't be changed here."
             />
 
             <FormField
@@ -96,23 +147,12 @@ export default function TenantBusiness() {
             />
 
             <FormField
-              label="Business Email"
-              value={business.email}
-              onChange={(value) => updateField('email', value)}
-              placeholder="business@example.com"
-              type="email"
-              icon={Mail}
+              label="Business Location"
+              value={business.location}
+              onChange={(value) => updateField('location', value)}
+              placeholder="Enter business location"
+              icon={MapPin}
             />
-
-            <div className="sm:col-span-2">
-              <FormField
-                label="Business Location"
-                value={business.location}
-                onChange={(value) => updateField('location', value)}
-                placeholder="Enter business location"
-                icon={MapPin}
-              />
-            </div>
 
             <div className="sm:col-span-2">
               <TextAreaField
@@ -160,12 +200,24 @@ export default function TenantBusiness() {
                 </p>
               </div>
 
-              <p className="mt-2 break-all text-sm text-[var(--primary)]">
-                yourdomain.com/portal/{business.slug || 'your-business'}
-              </p>
+              <div className="mt-2 flex items-center gap-3">
+                <p className="min-w-0 flex-1 break-all text-sm text-[var(--primary)]">
+                  {portalUrl}
+                </p>
+
+                <button
+                  type="button"
+                  onClick={copyPortalUrl}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-1.5 text-xs font-medium text-[var(--text-primary)] transition hover:bg-[var(--bg-muted)]"
+                >
+                  {copied ? <CheckCircle2 size={14} /> : <Copy size={14} />}
+                  {copied ? 'Copied' : 'Copy'}
+                </button>
+              </div>
 
               <p className="mt-1 text-xs text-[var(--text-muted)]">
-                Customers use this address to view your available internet packages.
+                Customers use this address to view your internet packages. Keep
+                it the same once you print it on a QR code or poster.
               </p>
             </div>
           </div>
@@ -179,25 +231,31 @@ export default function TenantBusiness() {
           />
           <p className="text-sm leading-5 text-[var(--text-secondary)]">
             Your business profile belongs to your tenant account. Changes here
-            should only affect your own customer portal and business information.
+            only affect your own customer portal and business information.
           </p>
         </div>
 
         {/* Save */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          {saved && (
-            <p className="flex items-center gap-2 text-sm text-[var(--success)]">
-              <CheckCircle2 size={17} />
-              Demo settings saved.
-            </p>
-          )}
+          <div>
+            {saved && (
+              <p className="flex items-center gap-2 text-sm text-[var(--success)]">
+                <CheckCircle2 size={17} />
+                Settings saved.
+              </p>
+            )}
+            {saveError && (
+              <p className="text-sm text-red-600">{saveError}</p>
+            )}
+          </div>
 
           <button
             type="submit"
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-[var(--primary)] px-5 py-2.5 text-sm font-medium text-white transition hover:opacity-90 sm:ml-auto"
+            disabled={saving}
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-[var(--primary)] px-5 py-2.5 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60 sm:ml-auto"
           >
             <Save size={17} />
-            Save Changes
+            {saving ? 'Saving…' : 'Save Changes'}
           </button>
         </div>
       </form>
@@ -213,6 +271,7 @@ function FormField({
   type = 'text',
   icon: Icon,
   hint,
+  disabled = false,
 }) {
   return (
     <label className="block">
@@ -231,9 +290,10 @@ function FormField({
         <input
           type={type}
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          disabled={disabled}
+          onChange={(e) => onChange && onChange(e.target.value)}
           placeholder={placeholder}
-          className={`w-full rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] py-2.5 pr-3 text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--primary)] ${
+          className={`w-full rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] py-2.5 pr-3 text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-60 ${
             Icon ? 'pl-9' : 'pl-3'
           }`}
         />

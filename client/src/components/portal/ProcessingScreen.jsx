@@ -2,20 +2,20 @@ import { useEffect } from 'react';
 import { useSessionPolling } from '../../hooks/useSessionPolling';
 
 export function ProcessingScreen({ token, onActive, onFailed, onRetry }) {
-  // Capture message (or resultDesc) from polling response
-  const { status, expiresAt, message, checking, recheck } = useSessionPolling(token, true);
+  const { status, expiresAt, message, timedOut, checking, recheck } =
+    useSessionPolling(token, true);
 
   useEffect(() => {
     if (status === 'active') {
       onActive(expiresAt);
     } else if (status === 'failed' || status === 'not_found') {
-      onFailed(message); // <-- Ensure message is passed here!
+      onFailed(message);
     }
   }, [status, expiresAt, message, onActive, onFailed]);
 
   const isPaid = status === 'paid' || status === 'active';
   const isReview = status === 'processing';
-  const isDelayed = status === 'timeout';
+  const isDelayed = timedOut && status !== 'active';
 
   return (
     <div className="max-w-md mx-auto p-4 text-center">
@@ -66,6 +66,8 @@ export function ProcessingScreen({ token, onActive, onFailed, onRetry }) {
           <p>
             {isReview
               ? 'Your transaction is under review. You can recheck status below.'
+              : isPaid
+              ? 'Your payment was received, but connecting is taking longer than expected. Please do not pay again. Check the status below.'
               : "Didn't receive the M-Pesa prompt or taking longer than expected?"}
           </p>
           <div className="mt-3 flex items-center justify-center gap-4">
@@ -77,7 +79,7 @@ export function ProcessingScreen({ token, onActive, onFailed, onRetry }) {
             >
               {checking ? 'Checking...' : 'Check status now'}
             </button>
-            {onRetry && !isReview && (
+            {onRetry && !isReview && !isPaid && (
               <button
                 type="button"
                 onClick={onRetry}

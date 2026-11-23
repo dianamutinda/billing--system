@@ -1,55 +1,44 @@
-
+import { useEffect, useState } from 'react';
 import {
   Bell,
   Users,
   Wallet,
   ReceiptText,
-  ArrowUpRight,
   CheckCircle2,
   ChevronRight,
 } from 'lucide-react';
+import { getDashboard, getSales, formatKes } from '../../api/dashboard.js';
 
-const stats = [
-  {
-    title: 'Revenue Today',
-    value: 'KES 4,850',
-    change: '+12%',
-    icon: Wallet,
-  },
-  {
-    title: 'Active Sessions',
-    value: '124',
-    change: '+8%',
-    icon: Users,
-  },
-  {
-    title: 'This Month',
-    value: 'KES 28,750',
-    change: '+14%',
-    icon: ReceiptText,
-  },
+// Round the top of the chart up to a tidy number (e.g. 3,870 -> 5,000)
+function niceMax(value) {
+  if (value <= 0) return 100;
+  const pow = 10 ** Math.floor(Math.log10(value));
+  const n = value / pow;
+  const step = n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10;
+  return step * pow;
+}
+
+// 4000 -> "4k", 1500 -> "1.5k", 50 -> "50"
+function axisLabel(v) {
+  return v >= 1000 ? `${+(v / 1000).toFixed(1)}k` : String(Math.round(v));
+}
+
+// '2026-11-23' -> "Mon" (7 days) or "23 Nov" (longer ranges)
+function dayLabel(day, short) {
+  const d = new Date(`${day}T00:00:00Z`);
+  return short
+    ? d.toLocaleDateString('en-GB', { weekday: 'short', timeZone: 'UTC' })
+    : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+}
+
+const RANGES = [
+  { label: '7D', days: 7 },
+  { label: '30D', days: 30 },
+  { label: '90D', days: 90 },
 ];
 
-const transactions = [
-  {
-    phone: '0712345678',
-    package: '1 Hour Package',
-    amount: 'KES 20',
-    time: '2m ago',
-  },
-  {
-    phone: '0723456789',
-    package: 'Day Package',
-    amount: 'KES 100',
-    time: '5m ago',
-  },
-  {
-    phone: '0709876543',
-    package: '1 Hour Package',
-    amount: 'KES 20',
-    time: '8m ago',
-  },
-];
+// Chart drawing area inside the 600 x 230 SVG
+const X0 = 10, X1 = 590, Y_TOP = 20, Y_BOTTOM = 200;
 
 function StatCard({ item }) {
   const Icon = item.icon;
@@ -60,11 +49,6 @@ function StatCard({ item }) {
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--primary-soft)] text-[var(--primary)]">
           <Icon size={20} />
         </div>
-
-        <span className="flex items-center gap-1 text-xs font-semibold text-[var(--success)]">
-          <ArrowUpRight size={14} />
-          {item.change}
-        </span>
       </div>
 
       <div className="mt-4">
@@ -81,6 +65,50 @@ function StatCard({ item }) {
 }
 
 function SalesChart() {
+  const [days, setDays] = useState(7);
+  const [series, setSeries] = useState(null);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    setSeries(null);
+    setError('');
+
+    async function load() {
+      const r = await getSales(days);
+      if (cancelled) return;
+      if (r.ok) setSeries(r.data);
+      else setError(r.error || 'Could not load sales');
+    }
+
+    load();
+    return () => { cancelled = true; };
+  }, [days]);
+
+  // Turn daily totals into points on the SVG
+  const max = series ? niceMax(Math.max(...series.map((s) => s.total))) : 100;
+  const points = series
+    ? series.map((s, i) => ({
+        x: X0 + (i * (X1 - X0)) / (series.length - 1),
+        y: Y_BOTTOM - (s.total / max) * (Y_BOTTOM - Y_TOP),
+      }))
+    : [];
+
+  const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x} ${p.y}`).join(' ');
+  const areaPath = points.length
+    ? `${linePath} L${X1} ${Y_BOTTOM} L${X0} ${Y_BOTTOM} Z`
+    : '';
+
+  const ticks = [4, 3, 2, 1, 0].map((k) => (max * k) / 4);
+  const hasSales = series && series.some((s) => s.total > 0);
+
+  // 7 days: label every day. Longer: 5 evenly spaced labels.
+  const labelIdx = series
+    ? days === 7
+      ? series.map((_, i) => i)
+      : [0, 1, 2, 3, 4].map((k) => Math.round((k * (series.length - 1)) / 4))
+    : [];
+
   return (
     <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-5">
       <div className="mb-6 flex items-center justify-between">
@@ -89,99 +117,99 @@ function SalesChart() {
         </h2>
 
         <div className="flex items-center gap-1 rounded-lg bg-[var(--bg-muted)] p-1">
-          {['7D', '30D', '90D'].map((period, index) => (
+          {RANGES.map((range) => (
             <button
-              key={period}
+              key={range.label}
+              onClick={() => setDays(range.days)}
               className={`rounded-md px-3 py-1 text-xs font-medium transition ${
-                index === 0
+                days === range.days
                   ? 'bg-[var(--primary)] text-white'
                   : 'text-[var(--text-secondary)] hover:bg-[var(--bg-surface)]'
               }`}
             >
-              {period}
+              {range.label}
             </button>
           ))}
         </div>
       </div>
 
-      <div className="relative">
-        <div className="absolute inset-0 flex flex-col justify-between pb-7">
-          {[4000, 3000, 2000, 1000, 0].map((value) => (
-            <div key={value} className="flex items-center gap-3">
-              <span className="w-7 text-[10px] text-[var(--text-muted)]">
-                {value === 0 ? '0' : `${value / 1000}k`}
-              </span>
+      {error && <p className="text-sm text-[var(--text-secondary)]">{error}</p>}
 
-              <div className="h-px flex-1 border-t border-dashed border-[var(--border)]" />
+      {!series && !error && (
+        <p className="text-sm text-[var(--text-secondary)]">Loading…</p>
+      )}
+
+      {series && (
+        <>
+          <div className="relative">
+            <div className="absolute inset-0 flex flex-col justify-between pb-7">
+              {ticks.map((value) => (
+                <div key={value} className="flex items-center gap-3">
+                  <span className="w-7 text-[10px] text-[var(--text-muted)]">
+                    {axisLabel(value)}
+                  </span>
+                  <div className="h-px flex-1 border-t border-dashed border-[var(--border)]" />
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
 
-        <svg
-          viewBox="0 0 600 230"
-          className="relative z-10 w-full overflow-visible"
-          preserveAspectRatio="none"
-        >
-          <defs>
-            <linearGradient id="salesFill" x1="0" y1="0" x2="0" y2="1">
-              <stop
-                offset="0%"
-                stopColor="var(--success)"
-                stopOpacity=".18"
+            <svg
+              viewBox="0 0 600 230"
+              className="relative z-10 w-full overflow-visible"
+              preserveAspectRatio="none"
+            >
+              <defs>
+                <linearGradient id="salesFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="var(--success)" stopOpacity=".18" />
+                  <stop offset="100%" stopColor="var(--success)" stopOpacity="0" />
+                </linearGradient>
+              </defs>
+
+              <path d={areaPath} fill="url(#salesFill)" />
+
+              <path
+                d={linePath}
+                fill="none"
+                stroke="var(--success)"
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                vectorEffect="non-scaling-stroke"
               />
-              <stop
-                offset="100%"
-                stopColor="var(--success)"
-                stopOpacity="0"
-              />
-            </linearGradient>
-          </defs>
 
-          <path
-            d="M10 130 C55 140 65 155 105 155 S165 130 205 115 S270 75 305 80 S365 105 405 110 S465 105 505 95 S555 65 590 55 L590 200 L10 200 Z"
-            fill="url(#salesFill)"
-          />
+              {days === 7 &&
+                points.map((p, i) => (
+                  <circle
+                    key={i}
+                    cx={p.x}
+                    cy={p.y}
+                    r="4"
+                    fill="var(--success)"
+                    stroke="var(--bg-surface)"
+                    strokeWidth="2"
+                  />
+                ))}
+            </svg>
 
-          <path
-            d="M10 130 C55 140 65 155 105 155 S165 130 205 115 S270 75 305 80 S365 105 405 110 S465 105 505 95 S555 65 590 55"
-            fill="none"
-            stroke="var(--success)"
-            strokeWidth="3"
-            strokeLinecap="round"
-          />
+            {!hasSales && (
+              <p className="absolute inset-0 z-20 flex items-center justify-center pb-7 text-sm text-[var(--text-secondary)]">
+                No sales in this period
+              </p>
+            )}
+          </div>
 
-          {[
-            [10, 130],
-            [105, 155],
-            [205, 115],
-            [305, 80],
-            [405, 110],
-            [505, 95],
-            [590, 55],
-          ].map(([cx, cy], index) => (
-            <circle
-              key={index}
-              cx={cx}
-              cy={cy}
-              r="4"
-              fill="var(--success)"
-              stroke="var(--bg-surface)"
-              strokeWidth="2"
-            />
-          ))}
-        </svg>
-      </div>
-
-      <div className="ml-10 mt-2 flex justify-between text-xs text-[var(--text-muted)]">
-        {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => (
-          <span key={day}>{day}</span>
-        ))}
-      </div>
+          <div className="ml-10 mt-2 flex justify-between text-xs text-[var(--text-muted)]">
+            {labelIdx.map((i) => (
+              <span key={series[i].day}>{dayLabel(series[i].day, days === 7)}</span>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
-function RecentTransactions() {
+function RecentTransactions({ items }) {
   return (
     <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-5">
       <div className="mb-5 flex items-center justify-between">
@@ -195,53 +223,79 @@ function RecentTransactions() {
         </button>
       </div>
 
-      <div className="space-y-5">
-        {transactions.map((transaction) => (
-          <div
-            key={transaction.phone}
-            className="flex items-center gap-3"
-          >
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--primary-soft)] text-[var(--success)]">
-              <CheckCircle2 size={17} />
+      {items.length === 0 ? (
+        <p className="text-sm text-[var(--text-secondary)]">
+          No payments yet. They will appear here as customers buy packages.
+        </p>
+      ) : (
+        <div className="space-y-5">
+          {items.map((transaction) => (
+            <div key={transaction.id} className="flex items-center gap-3">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--primary-soft)] text-[var(--success)]">
+                <CheckCircle2 size={17} />
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-[var(--text-primary)]">
+                  {transaction.phone}
+                </p>
+
+                <p className="mt-1 text-xs text-[var(--text-secondary)]">
+                  {transaction.package}
+                </p>
+              </div>
+
+              <div className="shrink-0 text-right">
+                <p className="text-sm font-semibold text-[var(--text-primary)]">
+                  {transaction.amount}
+                </p>
+
+                <p className="mt-1 text-xs text-[var(--text-muted)]">
+                  {transaction.time}
+                </p>
+              </div>
             </div>
-
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold text-[var(--text-primary)]">
-                {transaction.phone}
-              </p>
-
-              <p className="mt-1 text-xs text-[var(--text-secondary)]">
-                {transaction.package}
-              </p>
-            </div>
-
-            <div className="shrink-0 text-right">
-              <p className="text-sm font-semibold text-[var(--text-primary)]">
-                {transaction.amount}
-              </p>
-
-              <p className="mt-1 text-xs text-[var(--text-muted)]">
-                {transaction.time}
-              </p>
-            </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
 export default function TenantDashboard() {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      const r = await getDashboard();
+      if (cancelled) return;
+      if (r.ok) setData(r.data);
+      else setError(r.error || 'Could not load the dashboard');
+    }
+
+    load();
+    return () => { cancelled = true; };
+  }, []);
+
+  const stats = data
+    ? [
+        { title: 'Revenue Today', value: formatKes(data.revenueToday), icon: Wallet },
+        { title: 'Active Sessions', value: String(data.activeSessions), icon: Users },
+        { title: 'This Month', value: formatKes(data.revenueMonth), icon: ReceiptText },
+      ]
+    : [];
+
   return (
     <div className="space-y-6">
-
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-[var(--text-primary)]">
-            Welcome back, Joe!
+            Welcome back!
           </h1>
-
           <p className="mt-1 text-sm text-[var(--text-secondary)]">
             Here's what's happening with your hotspot today.
           </p>
@@ -255,19 +309,30 @@ export default function TenantDashboard() {
         </button>
       </div>
 
-      {/* Metric cards */}
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {stats.map((item) => (
-          <StatCard key={item.title} item={item} />
-        ))}
-      </section>
+      {error && (
+        <p className="rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-4 text-sm text-[var(--text-secondary)]">
+          {error}
+        </p>
+      )}
 
-      {/* Analytics and transactions */}
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.7fr_1fr]">
-        <SalesChart />
-        <RecentTransactions />
-      </section>
+      {!data && !error && (
+        <p className="text-sm text-[var(--text-secondary)]">Loading…</p>
+      )}
 
+      {data && (
+        <>
+          <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {stats.map((item) => (
+              <StatCard key={item.title} item={item} />
+            ))}
+          </section>
+
+          <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.7fr_1fr]">
+            <SalesChart />
+            <RecentTransactions items={data.recent} />
+          </section>
+        </>
+      )}
     </div>
   );
 }

@@ -116,7 +116,8 @@ app.use('/api/portal', require('./routes/portal'));
 app.use('/api/tenant/payment-settings', require('./routes/tenantPaymentSettings'));
 app.use('/api/tenant/transactions', require('./routes/tenantTransactions'));
 app.use('/api/tenant/sessions', require('./routes/tenantSessions'));
-
+app.use('/api/tenant/dashboard', require('./routes/tenantDashboard'));
+app.use('/api/tenant/business', require('./routes/tenantBusiness'));
 
 // 5. Global error handler (must come AFTER all routes)
 app.use((err, req, res, next) => {
@@ -148,3 +149,4 @@ process.on('unhandledRejection', (err) => {
 app.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`);
 });
+

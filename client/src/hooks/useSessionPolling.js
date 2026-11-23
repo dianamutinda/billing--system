@@ -9,6 +9,7 @@ const TERMINAL_STATUSES = new Set([
 
 export function useSessionPolling(token, active, timeoutMs = 120000) {
   const [result, setResult] = useState({ status: 'pending' });
+  const [timedOut, setTimedOut] = useState(false);
   const [checking, setChecking] = useState(false);
   const intervalRef = useRef(null);
   const timeoutRef = useRef(null);
@@ -17,6 +18,9 @@ export function useSessionPolling(token, active, timeoutMs = 120000) {
     if (!active || !token) return;
 
     let cancelled = false;
+    let finished = false; // true once we reach active / failed / not_found
+
+    setTimedOut(false);
 
     const poll = async () => {
       const data = await getSessionStatus(token);
@@ -27,6 +31,7 @@ export function useSessionPolling(token, active, timeoutMs = 120000) {
       setResult(data);
 
       if (TERMINAL_STATUSES.has(data.status)) {
+        finished = true;
         clearInterval(intervalRef.current);
         clearTimeout(timeoutRef.current);
       }
@@ -36,11 +41,10 @@ export function useSessionPolling(token, active, timeoutMs = 120000) {
     intervalRef.current = setInterval(poll, 3000);
 
     timeoutRef.current = setTimeout(() => {
-      if (cancelled) return;
+      if (cancelled || finished) return;
+      cancelled = true; // ignore any request that is still in flight
       clearInterval(intervalRef.current);
-      setResult((prev) =>
-        TERMINAL_STATUSES.has(prev.status) ? prev : { status: 'timeout' }
-      );
+      setTimedOut(true); // keep the real status; only flag the timeout
     }, timeoutMs);
 
     return () => {
@@ -64,5 +68,5 @@ export function useSessionPolling(token, active, timeoutMs = 120000) {
   // Normalize message across message, resultDesc, or result_desc
   const errorMessage = result.message || result.resultDesc || result.result_desc;
 
-  return { ...result, message: errorMessage, checking, recheck };
+  return { ...result, message: errorMessage, timedOut, checking, recheck };
 }
