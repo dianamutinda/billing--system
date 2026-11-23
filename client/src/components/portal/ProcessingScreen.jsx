@@ -1,4 +1,13 @@
 import { useEffect } from 'react';
+import {
+  Wifi,
+  Smartphone,
+  ShieldCheck,
+  CheckCircle2,
+  LoaderCircle,
+  AlertCircle,
+  RefreshCw,
+} from 'lucide-react';
 import { useSessionPolling } from '../../hooks/useSessionPolling';
 
 export function ProcessingScreen({ token, onActive, onFailed, onRetry }) {
@@ -17,80 +26,164 @@ export function ProcessingScreen({ token, onActive, onFailed, onRetry }) {
   const isReview = status === 'processing';
   const isDelayed = timedOut && status !== 'active';
 
+  const steps = [
+    {
+      label: 'M-Pesa payment confirmed',
+      complete: isPaid,
+    },
+    {
+      label: 'Internet session activated',
+      complete: status === 'active',
+    },
+  ];
+
   return (
-    <div className="max-w-md mx-auto p-4 text-center">
-      {!isReview && !isDelayed && (
-        <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mt-8" />
-      )}
-
-      <h1 className="text-2xl font-bold text-slate-900 mt-6">
-        {isReview
-          ? 'Confirming Your Payment'
-          : isPaid
-          ? 'Activating Your Wi-Fi...'
-          : 'Check Your Phone'}
-      </h1>
-
-      <p className="text-slate-500 mt-2 mb-6">
-        {isReview
-          ? 'We received your payment and are verifying the details. Please contact support if this takes more than a few minutes.'
-          : isPaid
-          ? 'Payment received! Connecting your device now...'
-          : 'Enter your M-Pesa PIN on the prompt sent to your phone.'}
-      </p>
-
-      {!isReview && (
-        <div className="bg-white border border-slate-200 rounded-xl p-4 text-left space-y-3">
-          <div className="flex items-center gap-3">
-            <span className={`font-bold ${isPaid ? 'text-green-600' : 'text-blue-600'}`}>
-              {isPaid ? '✓' : '1.'}
-            </span>
-            <span className={isPaid ? 'text-slate-900 font-medium' : 'text-slate-700'}>
-              {isPaid ? 'M-Pesa payment confirmed' : 'Waiting for M-Pesa PIN confirmation...'}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <span className={`font-bold ${status === 'active' ? 'text-green-600' : 'text-slate-400'}`}>
-              {status === 'active' ? '✓' : '2.'}
-            </span>
-            <span className={isPaid ? 'text-slate-900 font-medium' : 'text-slate-400'}>
-              Activating internet session
-            </span>
-          </div>
-        </div>
-      )}
-
-      {(isDelayed || isReview) && (
-        <div className="mt-4 bg-amber-50 border border-amber-200 text-sm text-amber-800 p-4 rounded-xl">
-          <p>
-            {isReview
-              ? 'Your transaction is under review. You can recheck status below.'
-              : isPaid
-              ? 'Your payment was received, but connecting is taking longer than expected. Please do not pay again. Check the status below.'
-              : "Didn't receive the M-Pesa prompt or taking longer than expected?"}
-          </p>
-          <div className="mt-3 flex items-center justify-center gap-4">
-            <button
-              type="button"
-              onClick={recheck}
-              disabled={checking}
-              className="font-medium underline disabled:opacity-50"
-            >
-              {checking ? 'Checking...' : 'Check status now'}
-            </button>
-            {onRetry && !isReview && !isPaid && (
-              <button
-                type="button"
-                onClick={onRetry}
-                className="font-medium text-blue-700 underline"
-              >
-                Try again
-              </button>
+    <div className="min-h-screen bg-[#F6F7F5] px-5 py-8 sm:py-12">
+      <div className="mx-auto max-w-md">
+        <main className="rounded-2xl border border-[#E2E8E4] bg-white px-5 py-8 text-center shadow-sm sm:px-7">
+          {/* Status icon */}
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-[#DCE8E5] text-[#668A8A]">
+            {isReview ? (
+              <ShieldCheck size={29} strokeWidth={1.8} />
+            ) : isPaid ? (
+              <Wifi size={29} strokeWidth={1.8} />
+            ) : (
+              <Smartphone size={29} strokeWidth={1.8} />
             )}
           </div>
-        </div>
-      )}
+
+          {/* Heading */}
+          <h1 className="mt-6 text-2xl font-semibold tracking-tight text-[#35434A]">
+            {isReview
+              ? 'Confirming your payment'
+              : isPaid
+              ? 'Activating your Wi-Fi'
+              : 'Check your phone'}
+          </h1>
+
+          <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-[#78858A]">
+            {isReview
+              ? 'We received your payment and are verifying the transaction details.'
+              : isPaid
+              ? 'Payment received. We are connecting your device now.'
+              : 'Enter your M-Pesa PIN on the prompt sent to your phone.'}
+          </p>
+
+          {/* Loading indicator */}
+          {!isReview && !isDelayed && status !== 'active' && (
+            <div className="mt-7 flex items-center justify-center gap-2 text-sm font-medium text-[#668A8A]">
+              <LoaderCircle size={17} className="animate-spin" />
+              {isPaid ? 'Setting up your connection...' : 'Waiting for confirmation...'}
+            </div>
+          )}
+
+          {/* Progress */}
+          {!isReview && (
+            <div className="mt-8 rounded-xl border border-[#E7ECE8] bg-[#F9FAF8] p-4 text-left">
+              <p className="mb-4 text-xs font-semibold uppercase tracking-wider text-[#899497]">
+                Connection progress
+              </p>
+
+              <div className="space-y-5">
+                {steps.map((step, index) => (
+                  <div key={step.label} className="flex items-center gap-3">
+                    <div
+                      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${
+                        step.complete
+                          ? 'bg-[#DCE8E5] text-[#668A8A]'
+                          : 'bg-[#EEF1EF] text-[#A1ACAA]'
+                      }`}
+                    >
+                      {step.complete ? (
+                        <CheckCircle2 size={17} />
+                      ) : (
+                        <span className="text-xs font-semibold">
+                          {index + 1}
+                        </span>
+                      )}
+                    </div>
+
+                    <span
+                      className={`text-sm ${
+                        step.complete
+                          ? 'font-medium text-[#35434A]'
+                          : 'text-[#899497]'
+                      }`}
+                    >
+                      {step.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Delayed or review notice */}
+          {(isDelayed || isReview) && (
+            <div className="mt-5 rounded-xl border border-[#E9D9B8] bg-[#FBF7EE] p-4 text-left">
+              <div className="flex items-start gap-3">
+                <AlertCircle
+                  size={19}
+                  className="mt-0.5 shrink-0 text-[#A47B3C]"
+                />
+
+                <div>
+                  <p className="text-sm font-medium text-[#72582F]">
+                    {isReview
+                      ? 'Transaction under review'
+                      : isPaid
+                      ? 'Connection is taking longer than expected'
+                      : 'Still waiting for payment confirmation'}
+                  </p>
+
+                  <p className="mt-1 text-sm leading-5 text-[#856F4B]">
+                    {isReview
+                      ? 'Your transaction is being checked. You can recheck its status below.'
+                      : isPaid
+                      ? 'Your payment was received, but your connection is taking longer than expected. Please do not pay again.'
+                      : "Didn't receive the M-Pesa prompt, or is confirmation taking longer than expected?"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-x-5 gap-y-3 border-t border-[#E9D9B8] pt-3">
+                <button
+                  type="button"
+                  onClick={recheck}
+                  disabled={checking}
+                  className="inline-flex items-center gap-2 text-sm font-semibold text-[#668A8A] transition hover:text-[#557878] disabled:opacity-50"
+                >
+                  <RefreshCw
+                    size={15}
+                    className={checking ? 'animate-spin' : ''}
+                  />
+                  {checking ? 'Checking...' : 'Check status'}
+                </button>
+
+                {onRetry && !isReview && !isPaid && (
+                  <button
+                    type="button"
+                    onClick={onRetry}
+                    className="text-sm font-semibold text-[#668A8A] transition hover:text-[#557878]"
+                  >
+                    Try again
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Footer */}
+          <div className="mt-7 flex items-center justify-center gap-2 text-xs text-[#899497]">
+            <ShieldCheck size={14} />
+            <span>
+              {isPaid
+                ? 'Your payment has been received securely.'
+                : 'Keep this page open while we confirm your payment.'}
+            </span>
+          </div>
+        </main>
+      </div>
     </div>
   );
 }
