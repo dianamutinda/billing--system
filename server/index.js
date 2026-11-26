@@ -118,6 +118,9 @@ app.use('/api/tenant/transactions', require('./routes/tenantTransactions'));
 app.use('/api/tenant/sessions', require('./routes/tenantSessions'));
 app.use('/api/tenant/dashboard', require('./routes/tenantDashboard'));
 app.use('/api/tenant/business', require('./routes/tenantBusiness'));
+app.use('/api/admin/dashboard', requireAdmin, require('./routes/adminDashboard'));
+app.use('/api/admin/plans', requireAdmin, require('./routes/adminPlans'));
+app.use('/api/admin/subscriptions', requireAdmin, require('./routes/adminSubscriptions'));
 
 // 5. Global error handler (must come AFTER all routes)
 app.use((err, req, res, next) => {

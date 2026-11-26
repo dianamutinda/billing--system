@@ -1,27 +1,20 @@
-
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
   Building2,
-  UserRound,
-  CreditCard,
   CheckCircle2,
+  Copy,
   Info,
 } from 'lucide-react';
 
-import Select from '../../components/ui/Select';
+import { createTenant } from '../../api/admin.js';
 
 const initialForm = {
   businessName: '',
-  slug: '',
-  phone: '',
   email: '',
+  phone: '',
   location: '',
-  ownerName: '',
-  ownerEmail: '',
-  ownerPhone: '',
-  plan: 'Starter',
 };
 
 function FormField({
@@ -55,27 +48,46 @@ function FormField({
         className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3.5 py-2.5 text-sm text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-muted)] focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/10"
       />
 
-      {hint && (
-        <p className="text-xs text-[var(--text-muted)]">{hint}</p>
-      )}
+      {hint && <p className="text-xs text-[var(--text-muted)]">{hint}</p>}
     </div>
   );
 }
 
-function SectionHeader({ icon: Icon, title, description }) {
-  return (
-    <div className="mb-5 flex items-start gap-3">
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--primary-soft)] text-[var(--primary)]">
-        <Icon size={18} />
-      </div>
+function CopyRow({ label, value, mono = false }) {
+  const [copied, setCopied] = useState(false);
 
-      <div>
-        <h2 className="text-sm font-semibold text-[var(--text-primary)]">
-          {title}
-        </h2>
-        <p className="mt-1 text-sm text-[var(--text-secondary)]">
-          {description}
-        </p>
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard can be blocked; the value is still visible to copy by hand
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2 border-b border-[var(--border)] pb-3 last:border-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
+      <span className="text-sm text-[var(--text-secondary)]">{label}</span>
+
+      <div className="flex min-w-0 items-center gap-2">
+        <span
+          className={`break-all text-sm font-medium text-[var(--text-primary)] ${
+            mono ? 'font-mono' : ''
+          }`}
+        >
+          {value}
+        </span>
+
+        <button
+          type="button"
+          onClick={copy}
+          aria-label={`Copy ${label}`}
+          className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-[var(--border)] px-2.5 py-1 text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--bg-muted)]"
+        >
+          {copied ? <CheckCircle2 size={13} /> : <Copy size={13} />}
+          {copied ? 'Copied' : 'Copy'}
+        </button>
       </div>
     </div>
   );
@@ -85,50 +97,69 @@ export default function AddTenant() {
   const navigate = useNavigate();
 
   const [form, setForm] = useState(initialForm);
-  const [submitted, setSubmitted] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [created, setCreated] = useState(null); // { tenant, tempPassword }
 
   function handleChange(event) {
     const { name, value } = event.target;
-
-    setForm((current) => {
-      const updated = { ...current, [name]: value };
-
-      if (name === 'businessName') {
-        updated.slug = value
-          .toLowerCase()
-          .trim()
-          .replace(/[^a-z0-9]+/g, '-')
-          .replace(/^-|-$/g, '');
-      }
-
-      return updated;
-    });
+    setForm((current) => ({ ...current, [name]: value }));
+    setError('');
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
+    setSaving(true);
+    setError('');
 
-    // Demo only: connect this form to the tenant creation API later.
-    console.log('New tenant details:', form);
-    setSubmitted(true);
+    const r = await createTenant(form);
+
+    setSaving(false);
+
+    if (r.ok) {
+      setCreated(r.data);
+      setForm(initialForm);
+    } else {
+      setError(r.data?.error || r.error || 'Could not create the tenant');
+    }
   }
 
-  if (submitted) {
+  // Success: the temporary password is shown here once, and only here
+  if (created) {
+    const portalUrl = `${window.location.origin}/p/${created.tenant.portalSlug}`;
+
     return (
-      <div className="mx-auto max-w-xl py-12">
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-8 text-center">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[var(--primary-soft)] text-[var(--primary)]">
-            <CheckCircle2 size={28} />
+      <div className="mx-auto max-w-xl py-8">
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-6 sm:p-8">
+          <div className="text-center">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[var(--primary-soft)] text-[var(--primary)]">
+              <CheckCircle2 size={28} />
+            </div>
+
+            <h1 className="mt-5 text-xl font-semibold text-[var(--text-primary)]">
+              {created.tenant.businessName} has been created
+            </h1>
+
+            <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
+              Give these sign-in details to the tenant. They will be asked to
+              choose a new password the first time they sign in.
+            </p>
           </div>
 
-          <h1 className="mt-5 text-xl font-semibold text-[var(--text-primary)]">
-            Tenant details captured
-          </h1>
+          <div className="mt-6 space-y-3 rounded-lg bg-[var(--bg-muted)] p-4">
+            <CopyRow label="Sign-in email" value={created.tenant.email} />
+            <CopyRow label="Temporary password" value={created.tempPassword} mono />
+            <CopyRow label="Customer portal" value={portalUrl} />
+          </div>
 
-          <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
-            This is currently a frontend preview. The tenant has not been
-            saved to the database yet.
-          </p>
+          <div className="mt-4 flex items-start gap-2 rounded-lg border border-[var(--border)] p-3">
+            <Info size={16} className="mt-0.5 shrink-0 text-[var(--info)]" />
+            <p className="text-xs leading-5 text-[var(--text-secondary)]">
+              This password is shown only once and is not stored anywhere you
+              can look it up. Copy it now. If it is lost, the tenant's password
+              will need to be reset.
+            </p>
+          </div>
 
           <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
             <button
@@ -141,10 +172,7 @@ export default function AddTenant() {
 
             <button
               type="button"
-              onClick={() => {
-                setForm(initialForm);
-                setSubmitted(false);
-              }}
+              onClick={() => setCreated(null)}
               className="rounded-lg border border-[var(--border)] px-5 py-2.5 text-sm font-medium text-[var(--text-primary)] hover:bg-[var(--bg-muted)]"
             >
               Add another tenant
@@ -176,13 +204,21 @@ export default function AddTenant() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
-        {/* Business information */}
         <section className="rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-5 sm:p-6">
-          <SectionHeader
-            icon={Building2}
-            title="Business information"
-            description="Basic information about the hotspot business."
-          />
+          <div className="mb-5 flex items-start gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--primary-soft)] text-[var(--primary)]">
+              <Building2 size={18} />
+            </div>
+
+            <div>
+              <h2 className="text-sm font-semibold text-[var(--text-primary)]">
+                Business information
+              </h2>
+              <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                The tenant can update these details later in their own settings.
+              </p>
+            </div>
+          </div>
 
           <div className="grid gap-5 sm:grid-cols-2">
             <FormField
@@ -195,23 +231,24 @@ export default function AddTenant() {
             />
 
             <FormField
+              label="Sign-in email"
+              name="email"
+              value={form.email}
+              onChange={handleChange}
+              placeholder="joe@example.com"
+              type="email"
+              required
+              hint="The tenant signs in with this address."
+            />
+
+            <FormField
               label="Business phone"
               name="phone"
               value={form.phone}
               onChange={handleChange}
-              placeholder="+254 7XX XXX XXX"
+              placeholder="07XX XXX XXX"
               type="tel"
-              required
-            />
-
-            <FormField
-              label="Business email"
-              name="email"
-              value={form.email}
-              onChange={handleChange}
-              placeholder="business@example.com"
-              type="email"
-              required
+              hint="Optional."
             />
 
             <FormField
@@ -220,128 +257,42 @@ export default function AddTenant() {
               value={form.location}
               onChange={handleChange}
               placeholder="e.g. Westlands, Nairobi"
-              required
-            />
-
-            <div className="sm:col-span-2">
-              <FormField
-                label="Customer portal address"
-                name="slug"
-                value={form.slug}
-                onChange={handleChange}
-                placeholder="joes-wifi"
-                hint="This unique address identifies the tenant's customer portal."
-                required
-              />
-
-              <div className="mt-2 rounded-lg bg-[var(--bg-muted)] px-3 py-2.5">
-                <p className="text-xs text-[var(--text-muted)]">
-                  Portal address preview
-                </p>
-                <p className="mt-1 break-all text-sm font-medium text-[var(--primary)]">
-                  yourdomain.com/portal/{form.slug || 'business-name'}
-                </p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Account owner */}
-        <section className="rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-5 sm:p-6">
-          <SectionHeader
-            icon={UserRound}
-            title="Account owner"
-            description="The person who will access and manage this tenant account."
-          />
-
-          <div className="grid gap-5 sm:grid-cols-2">
-            <FormField
-              label="Full name"
-              name="ownerName"
-              value={form.ownerName}
-              onChange={handleChange}
-              placeholder="e.g. Joe Kamau"
-              required
-            />
-
-            <FormField
-              label="Email address"
-              name="ownerEmail"
-              value={form.ownerEmail}
-              onChange={handleChange}
-              placeholder="joe@example.com"
-              type="email"
-              required
-            />
-
-            <FormField
-              label="Phone number"
-              name="ownerPhone"
-              value={form.ownerPhone}
-              onChange={handleChange}
-              placeholder="+254 7XX XXX XXX"
-              type="tel"
-              required
+              hint="Optional."
             />
           </div>
 
           <div className="mt-5 flex items-start gap-2 rounded-lg bg-[var(--bg-muted)] p-3">
             <Info size={16} className="mt-0.5 shrink-0 text-[var(--info)]" />
             <p className="text-xs leading-5 text-[var(--text-secondary)]">
-              Account access and invitation emails will be handled when
-              authentication is connected.
+              A temporary password is generated when you create the tenant. You
+              will see it once on the next screen. The customer portal address
+              is created automatically.
             </p>
           </div>
         </section>
 
-        {/* Subscription */}
-        <section className="rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-5 sm:p-6">
-          <SectionHeader
-            icon={CreditCard}
-            title="Subscription plan"
-            description="Choose the platform subscription for this business."
-          />
-
-          <div className="max-w-sm space-y-1.5">
-            <label className="block text-sm font-medium text-[var(--text-primary)]">
-              Select a plan
-              <span className="ml-1 text-[var(--danger)]">*</span>
-            </label>
-
-            <Select
-              value={form.plan}
-              onChange={(value) =>
-                setForm((current) => ({ ...current, plan: value }))
-              }
-              options={[
-                { label: 'Starter', value: 'Starter' },
-                { label: 'Professional', value: 'Professional' },
-                { label: 'Business', value: 'Business' },
-              ]}
-            />
+        {/* Actions */}
+        <div className="flex flex-col gap-3 border-t border-[var(--border)] pt-5 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            {error && <p className="text-sm text-red-600">{error}</p>}
           </div>
 
-          <p className="mt-3 text-xs text-[var(--text-muted)]">
-            Plan prices and billing cycles will be managed through
-            subscription settings.
-          </p>
-        </section>
+          <div className="flex flex-col-reverse gap-3 sm:flex-row">
+            <Link
+              to="/admin/tenants"
+              className="rounded-lg border border-[var(--border)] px-5 py-2.5 text-center text-sm font-medium text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-muted)]"
+            >
+              Cancel
+            </Link>
 
-        {/* Actions */}
-        <div className="flex flex-col-reverse gap-3 border-t border-[var(--border)] pt-5 sm:flex-row sm:justify-end">
-          <Link
-            to="/admin/tenants"
-            className="rounded-lg border border-[var(--border)] px-5 py-2.5 text-center text-sm font-medium text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-muted)]"
-          >
-            Cancel
-          </Link>
-
-          <button
-            type="submit"
-            className="rounded-lg bg-[var(--primary)] px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[var(--primary-hover)]"
-          >
-            Create tenant
-          </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="rounded-lg bg-[var(--primary)] px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[var(--primary-hover)] disabled:opacity-60"
+            >
+              {saving ? 'Creating…' : 'Create tenant'}
+            </button>
+          </div>
         </div>
       </form>
     </div>

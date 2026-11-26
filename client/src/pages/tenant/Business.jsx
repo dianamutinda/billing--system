@@ -11,6 +11,7 @@ import {
   Wifi,
   Info,
 } from 'lucide-react';
+import { useOutletContext } from 'react-router-dom';
 import { getBusiness, saveBusiness } from '../../api/business.js';
 
 export default function TenantBusiness() {
@@ -20,6 +21,7 @@ export default function TenantBusiness() {
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [copied, setCopied] = useState(false);
+  const outlet = useOutletContext();
 
   useEffect(() => {
     let cancelled = false;
@@ -56,7 +58,11 @@ export default function TenantBusiness() {
     });
 
     setSaving(false);
-    if (r.ok) setSaved(true);
+    if (r.ok) {
+      setSaved(true);
+      // The server trims the name, so send the sidebar the same value
+      outlet?.setBusinessName?.(business.businessName.trim());
+    }
     else setSaveError(r.error || 'Could not save your changes');
   };
 

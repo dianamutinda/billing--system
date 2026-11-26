@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
@@ -13,6 +12,7 @@ import {
 } from 'lucide-react';
 
 import Select from '../../components/ui/Select';
+import { createPlan } from '../../api/admin.js';
 
 const initialForm = {
   name: '',
@@ -93,6 +93,8 @@ export default function CreatePlan() {
   const [form, setForm] = useState(initialForm);
   const [newFeature, setNewFeature] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
   function handleChange(event) {
     const { name, value } = event.target;
@@ -133,20 +135,26 @@ export default function CreatePlan() {
     }));
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
+    setSaving(true);
+    setError('');
 
-    // Frontend preview only. Connect to the plan creation API later.
-    console.log('New subscription plan:', {
-      ...form,
+    const r = await createPlan({
+      name: form.name,
+      description: form.description,
       price: Number(form.price),
+      billingCycle: form.billingCycle.toLowerCase(),
       routerLimit:
-        form.routerLimit === 'Unlimited'
-          ? null
-          : Number(form.routerLimit),
+        form.routerLimit === 'Unlimited' ? null : Number(form.routerLimit),
+      isActive: form.status === 'Active',
+      features: form.features,
     });
 
-    setSubmitted(true);
+    setSaving(false);
+
+    if (r.ok) setSubmitted(true);
+    else setError(r.data?.error || r.error || 'Could not create the plan');
   }
 
   if (submitted) {
@@ -158,12 +166,11 @@ export default function CreatePlan() {
           </div>
 
           <h1 className="mt-5 text-xl font-semibold text-[var(--text-primary)]">
-            Plan details captured
+            Plan created
           </h1>
 
           <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
-            Your plan has not been saved yet. Backend integration is
-            still required to make it available to tenants.
+            The plan has been saved and is now available.
           </p>
 
           <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
@@ -407,25 +414,31 @@ export default function CreatePlan() {
             ))}
           </div>
 
-          <form onSubmit={addFeature} className="mt-4 flex flex-col gap-2 sm:flex-row">
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row">
             <input
               type="text"
               value={newFeature}
               onChange={(event) => setNewFeature(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') addFeature(event);
+              }}
               placeholder="Add a plan feature..."
               className="min-w-0 flex-1 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3.5 py-2.5 text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--primary)]"
             />
 
             <button
-              type="submit"
+              type="button"
+              onClick={addFeature}
               disabled={!newFeature.trim()}
               className="inline-flex items-center justify-center gap-2 rounded-lg border border-[var(--border)] px-4 py-2.5 text-sm font-medium text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-muted)] disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Plus size={16} />
               Add feature
             </button>
-          </form>
+          </div>
         </section>
+
+        {error && <p className="text-sm text-red-600">{error}</p>}
 
         {/* Form actions */}
         <div className="flex flex-col-reverse gap-3 border-t border-[var(--border)] pt-5 sm:flex-row sm:justify-end">
@@ -438,10 +451,10 @@ export default function CreatePlan() {
 
           <button
             type="submit"
-            disabled={form.features.length === 0}
+            disabled={saving || form.features.length === 0}
             className="rounded-lg bg-[var(--primary)] px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[var(--primary-hover)] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Create plan
+            {saving ? 'Creating…' : 'Create plan'}
           </button>
         </div>
       </form>

@@ -1,7 +1,7 @@
-
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { api } from '../api/http.js';
+import { getBusiness } from '../api/business.js';
 
 import {
   Wifi,
@@ -54,8 +54,21 @@ const navigation = [
 
 function TenantLayoutContent() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-    const navigate = useNavigate();
+  const navigate = useNavigate();
   const [signingOut, setSigningOut] = useState(false);
+  const [businessName, setBusinessName] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadName() {
+      const r = await getBusiness();
+      if (!cancelled && r.ok) setBusinessName(r.data.businessName);
+    }
+
+    loadName();
+    return () => { cancelled = true; };
+  }, []);
 
   async function handleSignOut() {
     setSigningOut(true);
@@ -96,7 +109,7 @@ function TenantLayoutContent() {
             <Wifi size={32} className="text-[var(--primary)]" />
 
             <h2 className="text-base font-bold">
-              Joe's Wi-Fi
+              {businessName || '\u00A0'}
             </h2>
           </div>
 
@@ -138,7 +151,7 @@ function TenantLayoutContent() {
 
         {/* Sidebar bottom */}
         <div className="border-t border-[var(--border)] p-3">
-                    <button
+          <button
             type="button"
             onClick={handleSignOut}
             disabled={signingOut}
@@ -176,7 +189,7 @@ function TenantLayoutContent() {
         {/* Page content */}
         <main className="w-full min-w-0 p-4 sm:p-6 lg:p-8">
           <div className="mx-auto w-full max-w-[1600px] min-w-0">
-            <Outlet />
+            <Outlet context={{ setBusinessName }} />
           </div>
         </main>
       </div>
