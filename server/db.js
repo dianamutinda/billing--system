@@ -2,15 +2,15 @@ const { Pool } = require('pg');
 
 const ssl = { rejectUnauthorized: false };
 
-// Admin connection (postgres, bypasses RLS): only for the few queries that must cross tenants
+// Admin connection (bypasses RLS): only for queries that must cross tenants or run system sweeps
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl,
   max: 5,
-  idleTimeoutMillis: 30000, // close idle connections ourselves, before the pooler drops them
+  idleTimeoutMillis: 30000, // close idle connections before the pooler drops them
 });
 
-// Tenant connection (app_tenant, RLS enforced): used only by withTenant
+// Tenant connection (RLS enforced): used only by withTenant
 const tenantPool = new Pool({
   connectionString: process.env.TENANT_DATABASE_URL,
   ssl,
@@ -29,13 +29,17 @@ tenantPool.on('error', (err) => {
 });
 
 async function withTenant(tenantId, callback) {
+  if (!tenantId || typeof tenantId !== 'string') {
+    throw new Error('withTenant requires a valid tenantId');
+  }
+
   const client = await tenantPool.connect();
   let broken = false;
   try {
     await client.query('BEGIN');
     await client.query(
       "SELECT set_config('app.current_tenant_id', $1, true)",
-      [String(tenantId)]
+      [tenantId]
     );
     const result = await callback(client);
     await client.query('COMMIT');
@@ -52,4 +56,8 @@ async function withTenant(tenantId, callback) {
   }
 }
 
-module.exports = { pool, withTenant };
+async function closePools() {
+  await Promise.allSettled([pool.end(), tenantPool.end()]);
+}
+
+module.exports = { pool, tenantPool, withTenant, closePools };

@@ -19,13 +19,21 @@ router.post('/status', async (req, res) => {
     if (!token || typeof token !== 'string' || !UUID_RE.test(token)) {
       return res.status(400).json({ error: 'Invalid token.' });
     }
-    
+
     const activeSession = await getActiveSessionByToken(token);
     if (activeSession) {
       if (!activeSession.network_activated) {
         return res.json({ status: 'activating' });
       }
-      return res.json({ status: 'active', expiresAt: activeSession.expires_at });
+
+      const expiresAtMs = new Date(activeSession.expires_at).getTime();
+      const remainingSeconds = Math.max(0, Math.floor((expiresAtMs - Date.now()) / 1000));
+
+      return res.json({
+        status: 'active',
+        expiresAt: activeSession.expires_at,
+        remainingSeconds,
+      });
     }
 
     const transaction = await getTransactionByToken(token);
@@ -34,16 +42,21 @@ router.post('/status', async (req, res) => {
     }
 
     const publicStatus = PUBLIC_STATUS[transaction.status] || 'pending';
+    const payload = { status: publicStatus };
 
-    // Include result_desc or message if the transaction failed
-    res.json({ 
-      status: publicStatus,
-      message: transaction.result_desc || transaction.message || transaction.error_message
-    });
-    
+    // Only surface a failure message when the payment actually failed
+    if (publicStatus === 'failed') {
+      payload.message =
+        transaction.result_desc ||
+        transaction.message ||
+        transaction.error_message ||
+        'Payment was not completed.';
+    }
+
+    return res.json(payload);
   } catch (err) {
     console.error('POST /api/sessions/status failed:', err);
-    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+    return res.status(500).json({ error: 'Something went wrong. Please try again.' });
   }
 });
 

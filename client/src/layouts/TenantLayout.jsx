@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { api } from '../api/http.js';
@@ -14,6 +15,7 @@ import {
   LogOut,
   Menu,
   X,
+  Ticket,
 } from 'lucide-react';
 
 import { ThemeProvider } from '../theme/ThemeProvider';
@@ -34,6 +36,11 @@ const navigation = [
     label: 'Packages',
     path: '/tenant/packages',
     icon: Package,
+  },
+  {
+    label: 'Vouchers',
+    path: '/tenant/vouchers',
+    icon: Ticket,
   },
   {
     label: 'Transactions',
@@ -62,19 +69,33 @@ function TenantLayoutContent() {
     let cancelled = false;
 
     async function loadName() {
-      const r = await getBusiness();
-      if (!cancelled && r.ok) setBusinessName(r.data.businessName);
+      try {
+        const r = await getBusiness();
+
+        if (!cancelled && r.ok) {
+          setBusinessName(r.data.businessName);
+        }
+      } catch (error) {
+        console.error('Unable to load business name:', error);
+      }
     }
 
     loadName();
-    return () => { cancelled = true; };
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function handleSignOut() {
     setSigningOut(true);
-    // The cookie is httpOnly, so only the server can clear it
-    await api('/api/tenant/logout', { method: 'POST' });
-    navigate('/tenant/login', { replace: true });
+
+    try {
+      // The cookie is httpOnly, so only the server can clear it.
+      await api('/api/tenant/logout', { method: 'POST' });
+    } finally {
+      navigate('/tenant/login', { replace: true });
+    }
   }
 
   return (

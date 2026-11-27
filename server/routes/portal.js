@@ -16,11 +16,20 @@ const listLimiter = rateLimit({
 
 router.get('/:portalSlug/packages', listLimiter, async (req, res) => {
   try {
-    const tenant = await getTenantByPortalSlug(req.params.portalSlug);
-    if (!tenant) return res.status(404).json({ error: 'Unknown WiFi provider.' });
+    const rawSlug = String(req.params.portalSlug || '').trim();
+    if (!rawSlug || rawSlug.length > 80) {
+      return res.status(404).json({ error: 'Unknown WiFi provider.' });
+    }
+
+    const tenant = await getTenantByPortalSlug(rawSlug);
+    if (!tenant) {
+      return res.status(404).json({ error: 'Unknown WiFi provider.' });
+    }
 
     const packages = await getAllPackages(tenant.id); // active packages only
-    res.json({
+    res.set('Cache-Control', 'public, max-age=30, stale-while-revalidate=60');
+
+    return res.json({
       businessName: tenant.business_name || null,
       packages: packages.map((p) => ({
         id: p.id,
@@ -31,7 +40,7 @@ router.get('/:portalSlug/packages', listLimiter, async (req, res) => {
     });
   } catch (err) {
     console.error('portal packages failed:', err);
-    res.status(500).json({ error: 'Something went wrong' });
+    return res.status(500).json({ error: 'Something went wrong' });
   }
 });
 

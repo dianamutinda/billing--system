@@ -1,34 +1,57 @@
-const {pool} = require('../db');
+const { pool } = require('../db');
 const { decrypt } = require('./crypto');
 
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const SLUG_REGEX = /^[a-z0-9][a-z0-9-]{1,79}$/i;
 
 async function getTenantByPortalSlug(portalSlug) {
-  if (!UUID_REGEX.test(portalSlug)) {
-    return undefined;
+  if (!portalSlug || typeof portalSlug !== 'string') {
+    return null;
+  }
+
+  const normalized = portalSlug.trim();
+  if (!SLUG_REGEX.test(normalized)) {
+    return null;
   }
 
   const result = await pool.query(
-  'SELECT id, business_name, portal_slug FROM tenants WHERE portal_slug = $1',
-  [portalSlug]
-);
- 
-  return result.rows[0];
+    `SELECT id, business_name, portal_slug
+     FROM tenants
+     WHERE portal_slug = $1
+     LIMIT 1`,
+    [normalized]
+  );
+
+  return result.rows[0] || null;
 }
 
+// Accepts routerId for caller compatibility with networkService; currently resolves the router stored on tenants.
+async function getTenantRouter(tenantId, _routerId = null) {
+  if (!tenantId) return null;
 
-async function getTenantRouter(tenantId) {
   const { rows } = await pool.query(
     `SELECT router_host, router_user, router_password_encrypted, router_port
-     FROM tenants WHERE id = $1`,
+     FROM tenants
+     WHERE id = $1
+     LIMIT 1`,
     [tenantId]
   );
+
   const t = rows[0];
-  if (!t || !t.router_host || !t.router_password_encrypted) return null;
+  if (!t || !t.router_host || !t.router_password_encrypted) {
+    return null;
+  }
+
+  let password;
+  try {
+    password = decrypt(t.router_password_encrypted);
+  } catch (err) {
+    throw new Error(`Failed to decrypt router password for tenant ${tenantId}: ${err.message}`);
+  }
+
   return {
     host: t.router_host,
-    user: t.router_user,
-    password: decrypt(t.router_password_encrypted),
+    user: t.router_user || 'admin',
+    password,
     port: Number(t.router_port) || 8728,
   };
 }

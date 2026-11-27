@@ -3,19 +3,23 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 
 import Portal from './pages/portal/Portal';
 import LoginPage from './pages/auth/LoginPage';
-
 import RequireAuth from './pages/auth/RequireAuth.jsx';
 
 import TenantLayout from './layouts/TenantLayout';
 import AdminLayout from './layouts/AdminLayout';
 
+// Tenant pages
 import TenantDashboard from './pages/tenant/Dashboard';
 import TenantSessions from './pages/tenant/Sessions';
 import TenantPackages from './pages/tenant/Packages';
 import TenantTransactions from './pages/tenant/Transactions';
 import TenantPayment from './pages/tenant/Payment';
 import TenantBusiness from './pages/tenant/Business';
+import TenantVouchers from './pages/tenant/Vouchers';
+import TenantVoucherDetails from './pages/tenant/VoucherDetails';
+import TenantVoucherBatchDetails from './pages/tenant/VoucherBatchDetails';
 
+// Admin pages
 import AdminDashboard from './pages/admin/Dashboard';
 import AdminTenants from './pages/admin/Tenants';
 import AddTenant from './pages/admin/AddTenant';
@@ -44,10 +48,23 @@ export default function App() {
           }
         >
           <Route index element={<Navigate to="dashboard" replace />} />
+
           <Route path="dashboard" element={<TenantDashboard />} />
           <Route path="sessions" element={<TenantSessions />} />
           <Route path="packages" element={<TenantPackages />} />
           <Route path="transactions" element={<TenantTransactions />} />
+
+          {/* Vouchers */}
+          <Route path="vouchers" element={<TenantVouchers />} />
+          <Route
+            path="vouchers/:id"
+            element={<TenantVoucherDetails />}
+          />
+          <Route
+            path="vouchers/batches/:batchId"
+            element={<TenantVoucherBatchDetails />}
+          />
+
           <Route path="payment-settings" element={<TenantPayment />} />
           <Route path="business-settings" element={<TenantBusiness />} />
         </Route>

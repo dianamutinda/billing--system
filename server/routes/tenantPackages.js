@@ -21,14 +21,18 @@ router.get('/', async (req, res) => {
   try {
     const packages = await withTenant(req.tenantId, async (client) => {
       const { rows } = await client.query(
-        'SELECT id, label, amount, duration_minutes, active FROM packages ORDER BY duration_minutes, label'
+        `SELECT id, label, amount, duration_minutes, active
+         FROM packages
+         WHERE tenant_id = $1
+         ORDER BY duration_minutes ASC, label ASC`,
+        [req.tenantId]
       );
       return rows;
     });
-    res.json(packages);
+    return res.json(packages);
   } catch (err) {
     console.error('tenant packages list failed:', err);
-    res.status(500).json({ error: 'Something went wrong' });
+    return res.status(500).json({ error: 'Something went wrong' });
   }
 });
 
@@ -48,18 +52,18 @@ router.post('/', async (req, res) => {
 
     const created = await withTenant(req.tenantId, async (client) => {
       const { rows } = await client.query(
-        `INSERT INTO packages (label, amount, duration_minutes, tenant_id)
-         VALUES ($1, $2, $3, $4)
+        `INSERT INTO packages (label, amount, duration_minutes, active, tenant_id)
+         VALUES ($1, $2, $3, true, $4)
          RETURNING id, label, amount, duration_minutes, active`,
         [label.trim(), amount, durationMinutes, req.tenantId]
       );
       return rows[0];
     });
 
-    res.status(201).json(created);
+    return res.status(201).json(created);
   } catch (err) {
     console.error('tenant package create failed:', err);
-    res.status(500).json({ error: 'Something went wrong' });
+    return res.status(500).json({ error: 'Something went wrong' });
   }
 });
 
@@ -94,7 +98,7 @@ router.patch('/:id', async (req, res) => {
              amount = COALESCE($2, amount),
              duration_minutes = COALESCE($3, duration_minutes),
              active = COALESCE($4, active)
-         WHERE id = $5
+         WHERE id = $5 AND tenant_id = $6
          RETURNING id, label, amount, duration_minutes, active`,
         [
           label === undefined ? null : label.trim(),
@@ -102,16 +106,17 @@ router.patch('/:id', async (req, res) => {
           durationMinutes ?? null,
           active ?? null,
           req.params.id,
+          req.tenantId,
         ]
       );
       return rows[0];
     });
 
     if (!updated) return res.status(404).json({ error: 'Not found' });
-    res.json(updated);
+    return res.json(updated);
   } catch (err) {
     console.error('tenant package update failed:', err);
-    res.status(500).json({ error: 'Something went wrong' });
+    return res.status(500).json({ error: 'Something went wrong' });
   }
 });
 

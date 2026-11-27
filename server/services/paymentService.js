@@ -1,16 +1,49 @@
 const { pool } = require('../db');
 const { decrypt } = require('./crypto');
 const { getPackageById } = require('./packageService');
+const { activate } = require('../services/networkService');
 
 const DARAJA_BASE = {
   sandbox: 'https://sandbox.safaricom.co.ke',
   live: 'https://api.safaricom.co.ke',
 };
 
+// In-memory cache: `${tenantId}:${env}` -> { token, expiresAt }
+const tokenCache = new Map();
+
+// Format current timestamp in East Africa Time (UTC+3) as YYYYMMDDHHmmss
+function getEatTimestamp() {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Africa/Nairobi',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date());
+
+  const map = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+  return `${map.year}${map.month}${map.day}${map.hour}${map.minute}${map.second}`;
+}
+
+// Normalize 07..., 01..., +254..., 254... into 254XXXXXXXXX
+function normalizeKenyanPhone(raw) {
+  const digits = String(raw || '').replace(/\D/g, '');
+  if (/^254[17]\d{8}$/.test(digits)) return digits;
+  if (/^0[17]\d{8}$/.test(digits)) return `254${digits.slice(1)}`;
+  if (/^[17]\d{8}$/.test(digits)) return `254${digits}`;
+  return null;
+}
+
 // Used by routes/sessions.js to answer "did my payment go through?"
 async function getTransactionByToken(token) {
   const { rows } = await pool.query(
-    'SELECT * FROM transactions WHERE token = $1',
+    `SELECT * FROM transactions
+     WHERE token = $1
+     ORDER BY created_at DESC
+     LIMIT 1`,
     [token]
   );
   return rows[0] || null;
@@ -31,17 +64,26 @@ async function getDarajaConfig(tenantId) {
   ) {
     return null;
   }
+  const env = t.daraja_env === 'live' ? 'live' : 'sandbox';
   return {
+    tenantId,
+    env,
     shortcode: t.daraja_shortcode,
     consumerKey: t.daraja_consumer_key,
     consumerSecret: decrypt(t.daraja_consumer_secret_encrypted),
-    passkey: t.daraja_passkey_encrypted && decrypt(t.daraja_passkey_encrypted),
-    baseUrl: DARAJA_BASE[t.daraja_env] || DARAJA_BASE.sandbox,
+    passkey: decrypt(t.daraja_passkey_encrypted),
+    baseUrl: DARAJA_BASE[env],
   };
 }
 
-// Daraja wants a short-lived access token before any STK push
+// Daraja wants a short-lived access token before any STK push (cached per tenant)
 async function getAccessToken(cfg) {
+  const cacheKey = `${cfg.tenantId}:${cfg.env}`;
+  const cached = tokenCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now() + 60_000) {
+    return cached.token;
+  }
+
   const auth = Buffer.from(`${cfg.consumerKey}:${cfg.consumerSecret}`).toString('base64');
   const res = await fetch(
     `${cfg.baseUrl}/oauth/v1/generate?grant_type=client_credentials`,
@@ -49,6 +91,13 @@ async function getAccessToken(cfg) {
   );
   if (!res.ok) throw new Error(`Daraja auth failed (${res.status})`);
   const data = await res.json();
+
+  const expiresInSec = Number(data.expires_in) || 3599;
+  tokenCache.set(cacheKey, {
+    token: data.access_token,
+    expiresAt: Date.now() + expiresInSec * 1000,
+  });
+
   return data.access_token;
 }
 
@@ -61,15 +110,49 @@ async function saveTransaction({ checkoutRequestId, phone, packageId, status, re
   );
 }
 
-async function initiateStkPush(phone, packageId, token, tenantId) {
+async function initiateStkPush(rawPhone, packageId, token, tenantId) {
+  const phone = normalizeKenyanPhone(rawPhone);
+
   // Any rejection is recorded as a failed row, then returned without a CheckoutRequestID
   const fail = async (reason) => {
     await saveTransaction({
-      checkoutRequestId: null, phone, packageId, status: 'failed',
-      resultDesc: reason, token, tenantId,
+      checkoutRequestId: null,
+      phone: phone || String(rawPhone || ''),
+      packageId,
+      status: 'failed',
+      resultDesc: reason,
+      token,
+      tenantId,
     });
     return {};
   };
+
+  if (!phone) return fail('Invalid Kenyan phone number');
+
+  // Guard against double-taps while an STK prompt is already pending for this token
+  const existing = await pool.query(
+    `SELECT checkout_request_id FROM transactions
+     WHERE token = $1 AND tenant_id = $2 AND status = 'pending'
+       AND created_at > NOW() - INTERVAL '90 seconds'
+     ORDER BY created_at DESC LIMIT 1`,
+    [token, tenantId]
+  );
+  if (existing.rows[0]) {
+    return { CheckoutRequestID: existing.rows[0].checkout_request_id, alreadyPending: true };
+  }
+
+  // Ensure tenant is active and has not exceeded plan_expires_at
+  const tenantRes = await pool.query(
+    `SELECT status, plan_expires_at FROM tenants WHERE id = $1 LIMIT 1`,
+    [tenantId]
+  );
+  const tenant = tenantRes.rows[0];
+  if (!tenant || tenant.status === 'suspended') {
+    return fail('Tenant account is unavailable');
+  }
+  if (tenant.plan_expires_at && new Date(tenant.plan_expires_at).getTime() <= Date.now()) {
+    return fail('Tenant subscription has expired');
+  }
 
   const cfg = await getDarajaConfig(tenantId);
   if (!cfg) return fail('Daraja is not configured');
@@ -86,7 +169,7 @@ async function initiateStkPush(phone, packageId, token, tenantId) {
   let data;
   try {
     const accessToken = await getAccessToken(cfg);
-    const timestamp = new Date().toISOString().replace(/\D/g, '').slice(0, 14);
+    const timestamp = getEatTimestamp();
     const password = Buffer.from(`${cfg.shortcode}${cfg.passkey}${timestamp}`).toString('base64');
 
     const res = await fetch(`${cfg.baseUrl}/mpesa/stkpush/v1/processrequest`, {
@@ -105,7 +188,7 @@ async function initiateStkPush(phone, packageId, token, tenantId) {
         PartyB: cfg.shortcode,
         PhoneNumber: phone,
         CallBackURL: callbackUrl,
-        AccountReference: 'WiFi',
+        AccountReference: `WiFi-${String(pkg.id).slice(0, 8)}`,
         TransactionDesc: 'WiFi access',
       }),
       signal: AbortSignal.timeout(20000),
@@ -121,13 +204,22 @@ async function initiateStkPush(phone, packageId, token, tenantId) {
   }
 
   await saveTransaction({
-    checkoutRequestId: data.CheckoutRequestID, phone, packageId,
-    status: 'pending', resultDesc: null, token, tenantId,
+    checkoutRequestId: data.CheckoutRequestID,
+    phone,
+    packageId,
+    status: 'pending',
+    resultDesc: null,
+    token,
+    tenantId,
   });
   return data;
 }
 
 async function processStkCallback(cb) {
+  if (!cb || !cb.CheckoutRequestID) {
+    return null;
+  }
+
   const { CheckoutRequestID, ResultCode, ResultDesc } = cb;
   const items = (cb.CallbackMetadata && cb.CallbackMetadata.Item) || [];
   const meta = Object.fromEntries(items.map((i) => [i.Name, i.Value]));
@@ -152,7 +244,7 @@ async function processStkCallback(cb) {
       return null; // unknown or already handled: nothing to do
     }
 
-    if (ResultCode !== 0) {
+    if (Number(ResultCode) !== 0) {
       await client.query(
         `UPDATE transactions SET status = 'failed', result_desc = $2 WHERE checkout_request_id = $1`,
         [CheckoutRequestID, ResultDesc]
@@ -167,7 +259,7 @@ async function processStkCallback(cb) {
     );
     const pkg = pk.rows[0];
 
-    if (!pkg || paidAmount !== Number(pkg.amount)) {
+    if (!pkg || !Number.isFinite(paidAmount) || paidAmount !== Math.round(Number(pkg.amount))) {
       const reason = !pkg
         ? 'package missing'
         : `amount mismatch: paid ${paidAmount}, price ${pkg.amount}`;
@@ -189,16 +281,56 @@ async function processStkCallback(cb) {
       [CheckoutRequestID, ResultDesc, receipt]
     );
 
-    const expiresAt = new Date(Date.now() + pkg.duration_minutes * 60 * 1000);
+    const addMs = pkg.duration_minutes * 60 * 1000;
 
-    const sess = await client.query(
-      `INSERT INTO sessions (phone_number, package_id, package_name, expires_at, token, tenant_id)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [tx.phone, pkg.id, pkg.label, expiresAt, tx.token, tx.tenant_id]
+    // Extend active session if this token/phone already has unexpired time; otherwise create new
+    const activeSess = await client.query(
+      `SELECT * FROM sessions
+       WHERE tenant_id = $1 AND token = $2 AND expires_at > NOW()
+       ORDER BY expires_at DESC LIMIT 1
+       FOR UPDATE`,
+      [tx.tenant_id, tx.token]
     );
 
+    let sessionRow;
+    if (activeSess.rows[0]) {
+      const currentExpiry = new Date(activeSess.rows[0].expires_at).getTime();
+      const extendedExpiry = new Date(currentExpiry + addMs);
+      const updated = await client.query(
+        `UPDATE sessions
+         SET expires_at = $1, package_id = $2, package_name = $3
+         WHERE id = $4
+         RETURNING *`,
+        [extendedExpiry, pkg.id, pkg.label, activeSess.rows[0].id]
+      );
+      sessionRow = updated.rows[0];
+    } else {
+      const expiresAt = new Date(Date.now() + addMs);
+      const inserted = await client.query(
+        `INSERT INTO sessions (phone_number, package_id, package_name, expires_at, token, tenant_id)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+        [tx.phone, pkg.id, pkg.label, expiresAt, tx.token, tx.tenant_id]
+      );
+      sessionRow = inserted.rows[0];
+    }
+
     await client.query('COMMIT');
-    return { status: 'paid', session: sess.rows[0] };
+
+    // Provision or update user on MikroTik after commit; activatePendingSessions retries if unreachable
+    const activation = await activate({
+      ...sessionRow,
+      rate_limit: pkg.rate_limit || sessionRow.rate_limit || null,
+      hotspot_profile: pkg.hotspot_profile || sessionRow.hotspot_profile || null,
+      data_limit_bytes: pkg.data_limit_bytes || sessionRow.data_limit_bytes || null,
+    });
+
+    if (!activation.success) {
+      console.error(
+        `Router activation deferred for session ${sessionRow.id} (tenant ${tx.tenant_id}): ${activation.error}`
+      );
+    }
+
+    return { status: 'paid', session: sessionRow, routerActivated: activation.success };
   } catch (err) {
     try {
       await client.query('ROLLBACK');
@@ -212,4 +344,9 @@ async function processStkCallback(cb) {
   }
 }
 
-module.exports = { initiateStkPush, processStkCallback, getTransactionByToken };
+module.exports = {
+  initiateStkPush,
+  processStkCallback,
+  getTransactionByToken,
+  normalizeKenyanPhone,
+};

@@ -5,20 +5,27 @@ const { processStkCallback } = require('../services/paymentService');
 const { activateSession } = require('../services/sessionService');
 
 function secretMatches(given) {
+  const expected = process.env.MPESA_CALLBACK_SECRET || '';
+  if (expected.length < 16 || !given) return false;
+
   const a = Buffer.from(String(given));
-  const b = Buffer.from(process.env.MPESA_CALLBACK_SECRET || '');
+  const b = Buffer.from(expected);
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
 router.post('/callback/:secret', async (req, res) => {
-  if (!secretMatches(req.params.secret)) return res.status(404).end();
+  if (!secretMatches(req.params.secret)) {
+    return res.status(404).end();
+  }
 
   try {
     const cb = req.body?.Body?.stkCallback;
     if (cb && cb.CheckoutRequestID) {
       console.log(`M-Pesa callback ${cb.CheckoutRequestID} result ${cb.ResultCode}`);
       const outcome = await processStkCallback(cb);
-      if (outcome && outcome.session) {
+
+      if (outcome && outcome.status === 'paid' && outcome.session) {
+        // Attempt immediate activation; background sweeper retries if router is offline
         await activateSession(outcome.session);
       }
     }
@@ -26,7 +33,7 @@ router.post('/callback/:secret', async (req, res) => {
     console.error('M-Pesa callback processing failed:', err.message);
   }
 
-  res.json({ ResultCode: 0, ResultDesc: 'Accepted' });
+  return res.json({ ResultCode: 0, ResultDesc: 'Accepted' });
 });
 
 module.exports = router;

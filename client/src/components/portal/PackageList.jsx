@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from 'react';
 import {
   Wifi,
@@ -8,8 +7,13 @@ import {
   ShieldCheck,
   RefreshCw,
   Signal,
+  Ticket,
+  CheckCircle2,
+  LoaderCircle,
 } from 'lucide-react';
 import { getPortalPackages } from '../../api/portalApi.js';
+import { api } from '../../api/http.js';
+import { connectToHotspot } from '../../api/hotspotLogin.js';
 
 const colors = {
   accent: '#668A8A',
@@ -19,11 +23,17 @@ const colors = {
   soft: '#DCE8E5',
 };
 
-export function PackageList({ slug, onSelect, supportPhone }) {
+export function PackageList({ slug, onSelect, onRedeemed, supportPhone }) {
   const [packages, setPackages] = useState([]);
   const [businessName, setBusinessName] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // Voucher redemption state
+  const [voucherCode, setVoucherCode] = useState('');
+  const [redeeming, setRedeeming] = useState(false);
+  const [redeemError, setRedeemError] = useState('');
+  const [redeemResult, setRedeemResult] = useState(null);
 
   const loadPackages = async () => {
     setLoading(true);
@@ -59,6 +69,49 @@ export function PackageList({ slug, onSelect, supportPhone }) {
     }
   }, [slug]);
 
+  async function handleRedeemVoucher(e) {
+    e.preventDefault();
+    const normalizedCode = voucherCode.trim().toUpperCase();
+    if (!normalizedCode || redeeming) return;
+
+    setRedeeming(true);
+    setRedeemError('');
+    setRedeemResult(null);
+
+    try {
+      const response = await api(
+        `/api/vouchers/portal/${encodeURIComponent(slug)}/redeem`,
+        {
+          method: 'POST',
+          body: { code: normalizedCode },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          response.data?.error ||
+            response.data?.message ||
+            'Could not redeem voucher code.'
+        );
+      }
+
+      const data = response.data || {};
+      setVoucherCode('');
+
+      if (typeof onRedeemed === 'function') {
+        onRedeemed(data);
+      }
+
+      if (connectToHotspot(data.username, data.password)) return;
+
+      setRedeemResult(data);
+    } catch (err) {
+      setRedeemError(err.message || 'Could not redeem voucher code.');
+    } finally {
+      setRedeeming(false);
+    }
+  }
+
   const supportLink = supportPhone
     ? `https://wa.me/${supportPhone.replace(/\D/g, '')}`
     : null;
@@ -66,7 +119,8 @@ export function PackageList({ slug, onSelect, supportPhone }) {
   // Loading state
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center px-6"
+      <div
+        className="flex min-h-screen items-center justify-center px-6"
         style={{ backgroundColor: colors.background }}
       >
         <div className="text-center">
@@ -110,6 +164,7 @@ export function PackageList({ slug, onSelect, supportPhone }) {
           </p>
 
           <button
+            type="button"
             onClick={loadPackages}
             className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold text-white transition hover:opacity-90"
             style={{ backgroundColor: colors.accent }}
@@ -284,6 +339,96 @@ export function PackageList({ slug, onSelect, supportPhone }) {
               </div>
             </button>
           ))}
+        </section>
+
+        {/* Voucher redemption */}
+        <section className="mt-5 rounded-2xl border border-[#E5E9E6] bg-white p-5 shadow-sm">
+          <div className="flex items-start gap-3">
+            <div
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
+              style={{ backgroundColor: colors.soft, color: colors.accent }}
+            >
+              <Ticket size={21} />
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <h2
+                className="text-sm font-semibold"
+                style={{ color: colors.text }}
+              >
+                Have a voucher code?
+              </h2>
+              <p className="mt-1 text-xs text-[#899497]">
+                Enter your code to activate internet access directly.
+              </p>
+            </div>
+          </div>
+
+          <form onSubmit={handleRedeemVoucher} className="mt-4 flex gap-2">
+            <input
+              type="text"
+              value={voucherCode}
+              onChange={(e) => setVoucherCode(e.target.value.toUpperCase())}
+              placeholder="e.g. ABCD1234"
+              autoCapitalize="characters"
+              autoComplete="off"
+              spellCheck={false}
+              disabled={redeeming}
+              className="min-w-0 flex-1 rounded-xl border border-[#DCE2DE] bg-[#F9FAF9] px-3.5 py-2.5 font-mono text-sm font-semibold uppercase tracking-wider text-[#35434A] placeholder:font-sans placeholder:font-normal placeholder:tracking-normal placeholder:text-[#9AA5A8] focus:border-[#668A8A] focus:bg-white focus:outline-none disabled:opacity-60"
+            />
+
+            <button
+              type="submit"
+              disabled={!voucherCode.trim() || redeeming}
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              style={{ backgroundColor: colors.accent }}
+            >
+              {redeeming ? (
+                <>
+                  <LoaderCircle size={16} className="animate-spin" />
+                  Redeeming
+                </>
+              ) : (
+                'Redeem'
+              )}
+            </button>
+          </form>
+
+          {redeemError && (
+            <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+              {redeemError}
+            </p>
+          )}
+
+          {redeemResult && (
+            <div className="mt-3 rounded-xl border border-[#DCE8E5] bg-[#F4F8F7] p-3.5 text-xs text-[#35434A]">
+              <div className="flex items-start gap-2">
+                <CheckCircle2
+                  size={16}
+                  className="mt-0.5 shrink-0"
+                  style={{ color: colors.accent }}
+                />
+                <div className="min-w-0 flex-1 space-y-1">
+                  <p className="font-semibold">
+                    Voucher activated! You can now connect with your credentials:
+                  </p>
+                  <p className="font-mono">
+                    Username: <strong>{redeemResult.username}</strong> · Password:{' '}
+                    <strong>{redeemResult.password}</strong>
+                  </p>
+                  {redeemResult.voucher?.expires_at && (
+                    <p className="text-[#78858A]">
+                      Expires:{' '}
+                      {new Date(redeemResult.voucher.expires_at).toLocaleString(
+                        undefined,
+                        { dateStyle: 'medium', timeStyle: 'short' }
+                      )}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </section>
 
         {/* Payment reassurance */}

@@ -11,10 +11,10 @@ router.get('/', async (req, res) => {
       // 1. Revenue: only paid transactions, split by Nairobi-local day and month
       const revenue = await client.query(
         `WITH paid AS (
-           SELECT p.amount,
+           SELECT COALESCE(t.amount, p.amount) AS amount,
                   t.created_at AT TIME ZONE 'Africa/Nairobi' AS local_ts
            FROM transactions t
-           JOIN packages p ON p.id = t.package_id
+           LEFT JOIN packages p ON p.id = t.package_id
            WHERE t.tenant_id = $1 AND t.status = 'paid'
          ),
          bounds AS (
@@ -39,7 +39,8 @@ router.get('/', async (req, res) => {
       // 3. Latest 5 paid transactions
       const recent = await client.query(
         `SELECT t.id, t.phone, t.created_at,
-                p.label AS package_label, p.amount
+                COALESCE(t.package_label, p.label) AS package_label,
+                COALESCE(t.amount, p.amount) AS amount
          FROM transactions t
          LEFT JOIN packages p ON p.id = t.package_id
          WHERE t.tenant_id = $1 AND t.status = 'paid'
@@ -51,10 +52,11 @@ router.get('/', async (req, res) => {
       return { revenue: revenue.rows[0], active: active.rows[0], recent: recent.rows };
     });
 
-    res.json({
+    res.set('Cache-Control', 'private, max-age=15');
+    return res.json({
       revenueToday: Number(data.revenue.revenue_today),
       revenueMonth: Number(data.revenue.revenue_month),
-      activeSessions: data.active.n,
+      activeSessions: Number(data.active.n),
       recentTransactions: data.recent.map((r) => ({
         id: r.id,
         phone: r.phone,
@@ -65,7 +67,7 @@ router.get('/', async (req, res) => {
     });
   } catch (err) {
     console.error('tenant dashboard failed:', err);
-    res.status(500).json({ error: 'Something went wrong' });
+    return res.status(500).json({ error: 'Something went wrong' });
   }
 });
 
@@ -87,9 +89,10 @@ router.get('/sales', async (req, res) => {
            )::date AS day
          ),
          paid AS (
-           SELECT (t.created_at AT TIME ZONE 'Africa/Nairobi')::date AS day, p.amount
+           SELECT (t.created_at AT TIME ZONE 'Africa/Nairobi')::date AS day,
+                  COALESCE(t.amount, p.amount) AS amount
            FROM transactions t
-           JOIN packages p ON p.id = t.package_id
+           LEFT JOIN packages p ON p.id = t.package_id
            WHERE t.tenant_id = $1 AND t.status = 'paid'
          )
          SELECT to_char(d.day, 'YYYY-MM-DD') AS day,
@@ -103,10 +106,12 @@ router.get('/sales', async (req, res) => {
       return result.rows;
     });
 
-    res.json(rows.map((r) => ({ day: r.day, total: Number(r.total) })));
+    res.set('Cache-Control', 'private, max-age=15');
+    return res.json(rows.map((r) => ({ day: r.day, total: Number(r.total) })));
   } catch (err) {
     console.error('tenant dashboard sales failed:', err);
-    res.status(500).json({ error: 'Something went wrong' });
+    return res.status(500).json({ error: 'Something went wrong' });
   }
 });
+
 module.exports = router;
