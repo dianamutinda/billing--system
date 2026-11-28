@@ -399,7 +399,7 @@ router.post('/:id/revoke', requireTenant, requireActiveTenant, async (req, res) 
            revoked_at = COALESCE(revoked_at, NOW())
        WHERE id = $1
          AND tenant_id = $2
-         AND status = 'unused'
+         AND status IN ('unused', 'active')
        RETURNING id,
                  tenant_id,
                  router_id,
@@ -422,7 +422,7 @@ router.post('/:id/revoke', requireTenant, requireActiveTenant, async (req, res) 
     const voucher = rows[0];
     if (!voucher) {
       return res.status(404).json({
-        error: 'Unused voucher not found or already redeemed/revoked',
+        error: 'Voucher not found, or already expired or revoked',
       });
     }
 

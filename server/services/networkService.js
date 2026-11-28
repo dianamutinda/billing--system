@@ -90,9 +90,19 @@ async function removeHotspotUsers(conn, username) {
   }
 }
 
+async function removeCookies(conn, username) {
+  const cookies = await safeWrite(conn, '/ip/hotspot/cookie/print', [`?user=${username}`]);
+  for (const cookie of cookies) {
+    if (cookie['.id']) {
+      await safeWrite(conn, '/ip/hotspot/cookie/remove', [`=.id=${cookie['.id']}`]);
+    }
+  }
+}
+
 async function removeUser(conn, username) {
   await removeActiveConnections(conn, username);
   await removeHotspotUsers(conn, username);
+  await removeCookies(conn, username);
 }
 
 async function activate(session) {

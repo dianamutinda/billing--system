@@ -7,7 +7,10 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl,
   max: 5,
-  idleTimeoutMillis: 30000, // close idle connections before the pooler drops them
+  idleTimeoutMillis: 30000,
+  keepAlive: true,
+idleTimeoutMillis: 10000,
+connectionTimeoutMillis: 10000, // close idle connections before the pooler drops them
 });
 
 // Tenant connection (RLS enforced): used only by withTenant
