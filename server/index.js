@@ -31,6 +31,8 @@ const {
   expireOldSessions,
   activatePendingSessions,
 } = require('./services/sessionService');
+const { runStaticSync } = require('./services/staticSyncService');
+setInterval(runStaticSync, 60 * 1000);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -133,6 +135,7 @@ app.use('/api/tenant/transactions', require('./routes/tenantTransactions'));
 app.use('/api/tenant/sessions', require('./routes/tenantSessions'));
 app.use('/api/tenant/dashboard', require('./routes/tenantDashboard'));
 app.use('/api/tenant/business', require('./routes/tenantBusiness'));
+app.use('/api/tenant/static-users', require('./routes/tenantStaticUsers'));
 
 // Admin routes
 app.use('/api/admin', adminAuthRoutes);
